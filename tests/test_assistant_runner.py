@@ -70,6 +70,7 @@ def test_run_once_runs_all_four_stages_in_order():
         now_et=WED, is_trading_day=lambda n: True,
         graph_factory=lambda cfg: FakeGraph("BUY"),
         fetch_quote=fake_quote, fetch_news=fake_news,
+        trading_day_resolver=lambda d: d,
     )
 
     assert result == 0
@@ -120,6 +121,7 @@ def test_suggestion_failure_does_not_discard_completed_analysis():
         store, RaisingLLM(), {"any": "cfg"},
         now_et=WED, is_trading_day=lambda n: False,  # skip scheduling stage entirely
         graph_factory=lambda cfg: FakeGraph("BUY"),
+        trading_day_resolver=lambda d: d,
     )
 
     assert result == 0
@@ -129,3 +131,29 @@ def test_suggestion_failure_does_not_discard_completed_analysis():
     assert done["status"] == "done"
     assert done["analysisId"]
     assert store._analyses[done["analysisId"]]["ticker"] == "TSLA"
+
+
+def test_weekend_deep_analysis_uses_last_trading_day():
+    """A user job executed on a Saturday must analyze the previous trading day."""
+    store = MemoryStore()
+    job_id = store.add_job({
+        "type": "deep_analysis", "ticker": "NVDA", "status": "queued",
+        "requestedBy": "user", "createdAt": utc_now_iso(),
+    })
+    seen_dates = []
+
+    class DateCapturingGraph:
+        def propagate(self, ticker, date):
+            seen_dates.append(date)
+            return {"market_report": "m", "final_trade_decision": "hold"}, "HOLD"
+
+    result = run_once(
+        store, FakeLLM(), {"any": "cfg"},
+        now_et=WED, is_trading_day=lambda n: False,
+        graph_factory=lambda cfg: DateCapturingGraph(),
+        trading_day_resolver=lambda d: "2026-07-31",   # 周六→上周五
+    )
+
+    assert result == 0
+    assert seen_dates == ["2026-07-31"]
+    assert store.get_job(job_id)["status"] == "done"

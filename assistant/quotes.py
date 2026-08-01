@@ -44,6 +44,19 @@ def get_return_pct(ticker: str, start_date: str, end_date: str, _history=_yf_his
     return round((last - first) / first * 100, 2)
 
 
+def last_trading_day(date_str: str, _history=_yf_history) -> str:
+    """Most recent trading day on or before ``date_str`` (by SPY daily bars).
+
+    User-triggered deep-analysis jobs can land on weekends/holidays, but the
+    engine needs a date that has market data or it fails with "no rows".
+    """
+    start = (datetime.strptime(date_str, "%Y-%m-%d") - timedelta(days=10)).strftime("%Y-%m-%d")
+    rows = _history("SPY", start, date_str)
+    if not rows:
+        raise QuoteUnavailable(f"no trading days on or before {date_str}")
+    return rows[-1][0]
+
+
 def is_trading_day_now(now_et: datetime, _history=_yf_history) -> bool:
     today = now_et.strftime("%Y-%m-%d")
     rows = _history("SPY", today, today)

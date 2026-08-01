@@ -24,7 +24,8 @@ ZOMBIE_AFTER_HOURS = 2
 
 
 def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
-             graph_factory=None, fetch_quote=None, fetch_news=None) -> int:
+             graph_factory=None, fetch_quote=None, fetch_news=None,
+             trading_day_resolver=None) -> int:
     """One wake-up: zombie cleanup -> user jobs -> scheduled jobs -> review.
 
     Each stage is isolated in its own try/except; a stage failure is logged
@@ -42,6 +43,9 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     if is_trading_day is None:
         from assistant import quotes
         is_trading_day = quotes.is_trading_day_now
+    if trading_day_resolver is None:
+        from assistant import quotes
+        trading_day_resolver = quotes.last_trading_day
 
     def brief_fn(today: str) -> str:
         kwargs = {}
@@ -52,8 +56,18 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
         return generate_daily_brief(store, llm, today, **kwargs)
 
     def deep_fn(ticker: str, today: str) -> tuple[str, str]:
+        # A user can trigger analysis on a weekend/holiday; the engine needs
+        # a date with market data, so resolve to the last trading day.
+        try:
+            trade_date = trading_day_resolver(today)
+        except Exception:
+            logger.exception("trading-day resolution failed; using %s as-is", today)
+            trade_date = today
+        if trade_date != today:
+            logger.info("%s: %s is not a trading day, analyzing %s instead",
+                        ticker, today, trade_date)
         analysis_id, decision = run_deep_analysis(
-            store, ticker, today, config, graph_factory=graph_factory
+            store, ticker, trade_date, config, graph_factory=graph_factory
         )
         try:
             generate_suggestion(store, llm, ticker, decision, analysis_id)

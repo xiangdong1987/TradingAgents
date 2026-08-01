@@ -30,3 +30,12 @@ def test_is_trading_day_now_true_when_spy_has_todays_bar():
     assert is_trading_day_now(now, _history=fake_history([("2026-07-31", 500.0)])) is True
     assert is_trading_day_now(now, _history=fake_history([("2026-07-30", 500.0)])) is False
     assert is_trading_day_now(now, _history=fake_history([])) is False
+
+
+def test_last_trading_day_returns_latest_bar_on_or_before():
+    from assistant.quotes import last_trading_day
+    rows = [("2026-07-30", 1.0), ("2026-07-31", 1.0)]
+    assert last_trading_day("2026-08-01", _history=fake_history(rows)) == "2026-07-31"
+    assert last_trading_day("2026-07-31", _history=fake_history(rows)) == "2026-07-31"
+    with pytest.raises(QuoteUnavailable):
+        last_trading_day("2026-08-01", _history=fake_history([]))
