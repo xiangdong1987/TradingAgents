@@ -13,6 +13,8 @@ String _s(Object? v, [String fallback = '']) => (v as String?) ?? fallback;
 DateTime _t(Object? v) =>
     v == null ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true) : DateTime.parse(v as String).toUtc();
 
+DateTime? _tOrNull(Object? v) => v == null ? null : DateTime.parse(v as String).toUtc();
+
 class WatchItem {
   const WatchItem({required this.ticker, required this.note, required this.deepFreq, required this.addedAt});
   final String ticker;
@@ -93,7 +95,8 @@ class Analysis {
 class Suggestion {
   const Suggestion({required this.id, required this.ticker, required this.action,
       required this.targetWeightPct, required this.rationale, required this.analysisId,
-      required this.status, required this.createdAt, required this.outcomePct});
+      required this.status, required this.createdAt, required this.outcomePct,
+      required this.resolvedAt, required this.reviewedAt});
   final String id;
   final String ticker;
   final String action; // buy|add|trim|sell|hold
@@ -103,6 +106,8 @@ class Suggestion {
   final String status; // pending|accepted|dismissed
   final DateTime createdAt;
   final double? outcomePct;
+  final DateTime? resolvedAt;
+  final DateTime? reviewedAt;
 
   bool get isPending => status == 'pending';
 
@@ -116,12 +121,15 @@ class Suggestion {
         status: _s(d['status'], 'pending'),
         createdAt: _t(d['createdAt']),
         outcomePct: _dOrNull(d['outcomePct']),
+        resolvedAt: _tOrNull(d['resolvedAt']),
+        reviewedAt: _tOrNull(d['reviewedAt']),
       );
 }
 
 class Job {
   const Job({required this.id, required this.type, required this.ticker, required this.status,
-      required this.requestedBy, required this.error, required this.analysisId, required this.createdAt});
+      required this.requestedBy, required this.error, required this.analysisId, required this.createdAt,
+      required this.finishedAt});
   final String id;
   final String type; // daily_brief|deep_analysis
   final String? ticker;
@@ -130,6 +138,7 @@ class Job {
   final String? error;
   final String? analysisId;
   final DateTime createdAt;
+  final DateTime? finishedAt;
 
   bool get isFailed => status == 'failed';
   bool get isActive => status == 'queued' || status == 'running';
@@ -143,5 +152,6 @@ class Job {
         error: d['error'] as String?,
         analysisId: d['analysisId'] as String?,
         createdAt: _t(d['createdAt']),
+        finishedAt: _tOrNull(d['finishedAt']),
       );
 }

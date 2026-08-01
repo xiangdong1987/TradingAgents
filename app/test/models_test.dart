@@ -28,6 +28,8 @@ void main() {
     expect(s.id, 's1');
     expect(s.targetWeightPct, isNull);
     expect(s.outcomePct, isNull);
+    expect(s.resolvedAt, isNull);
+    expect(s.reviewedAt, isNull);
     expect(s.isPending, isTrue);
   });
 
@@ -50,10 +52,34 @@ void main() {
     final j = Job.fromDoc('j1', {
       'type': 'deep_analysis', 'ticker': 'NVDA', 'status': 'failed',
       'requestedBy': 'user', 'error': 'boom', 'createdAt': '2026-08-01T00:00:00+00:00',
+      'finishedAt': '2026-08-01T10:47:17+00:00',
     });
     expect(j.isFailed, isTrue);
     expect(j.error, 'boom');
     expect(j.analysisId, isNull);
+    expect(j.finishedAt, isNotNull);
+    expect(j.finishedAt!.isUtc, isTrue);
+  });
+
+  test('Job finishedAt is nullable', () {
+    final j = Job.fromDoc('j1', {
+      'type': 'deep_analysis', 'ticker': 'NVDA', 'status': 'queued',
+      'requestedBy': 'user', 'createdAt': '2026-08-01T00:00:00+00:00',
+    });
+    expect(j.finishedAt, isNull);
+  });
+
+  test('Suggestion parses resolvedAt and reviewedAt as nullable UTC DateTimes', () {
+    final s = Suggestion.fromDoc('s1', {
+      'ticker': 'NVDA', 'action': 'trim', 'rationale': 'r', 'analysisId': 'a1',
+      'status': 'accepted', 'createdAt': '2026-08-01T00:00:00+00:00',
+      'reviewedAt': '2026-08-01T10:47:17+00:00',
+      'resolvedAt': '2026-08-01T11:00:00+00:00',
+    });
+    expect(s.reviewedAt, isNotNull);
+    expect(s.reviewedAt!.isUtc, isTrue);
+    expect(s.resolvedAt, isNotNull);
+    expect(s.resolvedAt!.isUtc, isTrue);
   });
 
   test('Analysis parses sections map with missing keys as empty', () {
