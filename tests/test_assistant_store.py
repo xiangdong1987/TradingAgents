@@ -62,3 +62,11 @@ def test_job_queue_claim_and_zombie_cleanup():
     s.update_job(j1, {"startedAt": "2026-08-01T00:00:00+00:00"})
     assert s.fail_zombie_jobs("2026-08-01T18:00:00+00:00") == 1
     assert s.get_job(j1)["status"] == "failed"
+
+
+def test_resolve_credentials_path_env_override(tmp_path):
+    from assistant.store import resolve_credentials_path
+    default = resolve_credentials_path({})
+    assert default.endswith(".tradingagents/firebase-service-account.json")
+    custom = str(tmp_path / "sa.json")
+    assert resolve_credentials_path({"TRADINGAGENTS_FIREBASE_CREDENTIALS": custom}) == custom
