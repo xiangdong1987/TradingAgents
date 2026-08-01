@@ -94,11 +94,15 @@ class WealthRepo {
 
   Future<void> setPosition({
     required String ticker, required double shares, required double avgCost,
-  }) =>
-      _db.collection('positions').doc(ticker).set({
-        'ticker': ticker, 'shares': shares, 'avgCost': avgCost,
-        'updatedAt': utcNowIso(),
-      });
+  }) async {
+    await _db.collection('positions').doc(ticker).set({
+      'ticker': ticker, 'shares': shares, 'avgCost': avgCost,
+      'updatedAt': utcNowIso(),
+    });
+    // 持仓自动加入自选（已在自选里则不动，保留其 deepFreq 设置）。
+    final watch = await _db.collection('watchlist').doc(ticker).get();
+    if (!watch.exists) await addWatch(ticker);
+  }
 
   Future<void> deletePosition(String ticker) =>
       _db.collection('positions').doc(ticker).delete();
@@ -119,6 +123,15 @@ class WealthRepo {
 
   Future<void> setDeepFreq(String ticker, String deepFreq) =>
       _db.collection('watchlist').doc(ticker).update({'deepFreq': deepFreq});
+
+  /// 请求 runner 强制刷新全部行情（写一条 refresh_quotes job）。
+  Future<String> enqueueQuotesRefresh() async {
+    final ref = await _db.collection('jobs').add({
+      'type': 'refresh_quotes', 'status': 'queued',
+      'requestedBy': 'user', 'createdAt': utcNowIso(),
+    });
+    return ref.id;
+  }
 
   Future<String> enqueueDeepAnalysis(String ticker) async {
     final ref = await _db.collection('jobs').add({

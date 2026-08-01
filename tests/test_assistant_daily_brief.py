@@ -162,3 +162,18 @@ def test_top_up_adds_fx_for_milan_tickers():
     quotes = store.get_brief("2026-08-01")["quotes"]
     assert "ENEL.MI" in quotes and "EURUSD=X" in quotes
     assert added >= 2
+
+
+def test_top_up_quotes_force_overwrites_existing():
+    from assistant.daily_brief import top_up_quotes
+
+    store = make_store()  # watchlist NVDA + position AAPL
+    store.save_brief("2026-08-01", {
+        "date": "2026-08-01", "quotes": {"NVDA": {"close": 1.0, "pctChange": 0.0}},
+    })
+    n = top_up_quotes(store, "2026-08-01", fetch_quote=ok_quote, force=True)
+    quotes = store.get_brief("2026-08-01")["quotes"]
+    assert quotes["NVDA"]["close"] == 110.0     # 旧值被强制刷新
+    assert quotes["AAPL"]["close"] == 110.0
+    assert "EURUSD=X" in quotes
+    assert n == 3

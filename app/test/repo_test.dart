@@ -129,6 +129,28 @@ void main() {
     expect((await db.collection('watchlist').doc('NVDA').get()).exists, isFalse);
   });
 
+
+  test('enqueueQuotesRefresh writes a refresh_quotes user job', () async {
+    final jid = await repo.enqueueQuotesRefresh();
+    final doc = (await db.collection('jobs').doc(jid).get()).data()!;
+    expect(doc['type'], 'refresh_quotes');
+    expect(doc['status'], 'queued');
+    expect(doc['requestedBy'], 'user');
+    expect(doc['createdAt'], endsWith('+00:00'));
+  });
+
+  test('setPosition auto-adds ticker to watchlist, preserving existing', () async {
+    await repo.setPosition(ticker: 'ENEL.MI', shares: 100, avgCost: 9.0);
+    final watch = (await db.collection('watchlist').doc('ENEL.MI').get()).data()!;
+    expect(watch['deepFreq'], 'manual');                 // 新建默认 manual
+
+    await db.collection('watchlist').doc('NVDA').set({
+      'ticker': 'NVDA', 'note': '', 'deepFreq': 'weekly', 'addedAt': 'x'});
+    await repo.setPosition(ticker: 'NVDA', shares: 10, avgCost: 150);
+    final kept = (await db.collection('watchlist').doc('NVDA').get()).data()!;
+    expect(kept['deepFreq'], 'weekly');                  // 已有的不被覆盖
+  });
+
   test('enqueueDeepAnalysis writes user job without date field', () async {
     final jid = await repo.enqueueDeepAnalysis('NVDA');
     final doc = (await db.collection('jobs').doc(jid).get()).data()!;

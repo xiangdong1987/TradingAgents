@@ -86,7 +86,7 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
 
 
 def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
-                  lookback_days: int = 3) -> int:
+                  lookback_days: int = 3, force: bool = False) -> int:
     """Fill quotes missing from the most recent brief for the CURRENT
     watchlist ∪ positions.
 
@@ -111,7 +111,7 @@ def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
     if brief is None:
         return 0
 
-    existing = brief.get("quotes") or {}
+    existing = {} if force else (brief.get("quotes") or {})
     added = {}
     for t in sorted(tickers - set(existing)):
         try:

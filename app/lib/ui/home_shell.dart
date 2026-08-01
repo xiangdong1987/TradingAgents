@@ -31,6 +31,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         title: const Text('理财助手'),
         actions: [
           IconButton(
+            key: const Key('refreshQuotes'),
+            icon: const Icon(Icons.refresh),
+            tooltip: '刷新行情',
+            onPressed: () async {
+              await ref.read(repoProvider).enqueueQuotesRefresh();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('已请求刷新行情，处理完成后自动更新')));
+              }
+            },
+          ),
+          IconButton(
             key: const Key('logoutButton'),
             icon: const Icon(Icons.logout),
             onPressed: () => ref.read(firebaseAuthProvider).signOut(),

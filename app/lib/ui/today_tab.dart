@@ -29,9 +29,12 @@ class TodayTab extends ConsumerWidget {
         _OverviewBar(summary: summary),
         for (final job in jobs.value ?? const <Job>[])
           MaterialBanner(
-            content: Text(job.type == 'deep_analysis'
-                ? '${job.ticker} 深度分析中（${job.status == "queued" ? "排队" : "分析中"}）'
-                : '日报生成中'),
+            content: Text(switch (job.type) {
+              'deep_analysis' =>
+                '${job.ticker} 深度分析中（${job.status == "queued" ? "排队" : "分析中"}）',
+              'refresh_quotes' => '行情刷新中',
+              _ => '日报生成中',
+            }),
             // 用静态图标而非不确定态 CircularProgressIndicator：后者的 ticker 永不停止，
             // 会导致 job 处于 running 状态时 widget 测试里的 pumpAndSettle 永远等不到静止而超时。
             leading: const Icon(Icons.sync, size: 20),

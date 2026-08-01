@@ -76,6 +76,11 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
                              ticker, analysis_id)
         return analysis_id, decision
 
+    def refresh_fn(today: str) -> None:
+        kwargs = {} if fetch_quote is None else {"fetch_quote": fetch_quote}
+        refreshed = top_up_quotes(store, today, force=True, **kwargs)
+        logger.info("force-refreshed quotes for %d ticker(s)", refreshed)
+
     # 1. zombie cleanup
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=ZOMBIE_AFTER_HOURS)).isoformat()
@@ -88,7 +93,8 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     # 2. user-requested jobs first
     try:
         for job in store.claim_queued_jobs():
-            execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn)
+            execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn,
+                        refresh_fn=refresh_fn)
     except Exception:
         logger.exception("user job execution stage failed")
 
@@ -96,7 +102,8 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     try:
         plan_scheduled_jobs(store, now_et, is_trading_day=is_trading_day)
         for job in store.claim_queued_jobs():
-            execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn)
+            execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn,
+                        refresh_fn=refresh_fn)
     except Exception:
         logger.exception("scheduled job planning/execution stage failed")
 

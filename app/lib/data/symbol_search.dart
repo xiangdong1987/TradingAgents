@@ -120,6 +120,15 @@ const List<SymbolEntry> milanEntries = [
   SymbolEntry(symbol: 'EIMI.MI', name: 'iShares Core MSCI EM IMI UCITS ETF', alias: '新兴市场 ETF'),
   SymbolEntry(symbol: 'CSSPX.MI', name: 'iShares Core S&P 500 UCITS ETF', alias: '标普500 ETF'),
   SymbolEntry(symbol: 'SGLD.MI', name: 'Invesco Physical Gold ETC', alias: '黄金 ETC'),
+  // 国债/欧元区政府债 ETF（米兰上市，EUR 计价）
+  SymbolEntry(symbol: 'IITB.MI', name: 'iShares Italy Govt Bond UCITS ETF', alias: '意大利国债 ETF'),
+  SymbolEntry(symbol: 'BTP10.MI', name: 'Amundi BTP 10Y Govt Bond UCITS ETF', alias: '意大利国债10年 BTP'),
+  SymbolEntry(symbol: 'SEGA.MI', name: 'iShares Core Euro Govt Bond UCITS ETF', alias: '欧元区国债 ETF'),
+  SymbolEntry(symbol: 'XGLE.MI', name: 'Xtrackers II Eurozone Government Bond UCITS ETF', alias: '欧元区国债 ETF'),
+  SymbolEntry(symbol: 'VGEA.MI', name: 'Vanguard EUR Eurozone Government Bond UCITS ETF', alias: '欧元区国债 ETF 先锋'),
+  SymbolEntry(symbol: 'EM13.MI', name: 'iShares Euro Govt Bond 1-3yr UCITS ETF', alias: '欧元区短债 1-3年'),
+  SymbolEntry(symbol: 'X13E.MI', name: 'Xtrackers II Eurozone Gov Bond 1-3 UCITS ETF', alias: '欧元区短债 1-3年'),
+  SymbolEntry(symbol: 'IBGL.MI', name: 'iShares Euro Govt Bond 15-30yr UCITS ETF', alias: '欧元区长债 15-30年'),
 ];
 
 class SymbolIndex {

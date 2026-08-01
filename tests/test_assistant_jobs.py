@@ -65,3 +65,21 @@ def test_deep_analysis_job_uses_stamped_date_not_utc_now():
 
     execute_job(s, job, brief_fn=None, deep_fn=deep_fn)
     assert seen == {"ticker": "NVDA", "today": "2026-07-31"}
+
+
+def test_refresh_quotes_job_invokes_refresh_fn():
+    s = MemoryStore()
+    job = queued(s, type="refresh_quotes")
+    seen = []
+    execute_job(s, job, brief_fn=None, deep_fn=None,
+                refresh_fn=lambda today: seen.append(today))
+    assert s.get_job(job["id"])["status"] == "done"
+    assert len(seen) == 1
+
+
+def test_refresh_quotes_without_wiring_fails_gracefully():
+    s = MemoryStore()
+    job = queued(s, type="refresh_quotes")
+    execute_job(s, job, brief_fn=None, deep_fn=None)
+    failed = s.get_job(job["id"])
+    assert failed["status"] == "failed" and "refresh_fn" in failed["error"]

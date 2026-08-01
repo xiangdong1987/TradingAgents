@@ -91,4 +91,15 @@ void main() {
     expect(find.textContaining('登录失败'), findsOneWidget);
     expect(find.byType(LoginPage), findsOneWidget);
   });
+
+  testWidgets('refresh button enqueues a refresh_quotes job', (tester) async {
+    final auth = MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u1'));
+    final db = FakeFirebaseFirestore();
+    await tester.pumpWidget(_app(auth, db));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('refreshQuotes')));
+    await tester.pumpAndSettle();
+    final jobs = await db.collection('jobs').get();
+    expect(jobs.docs.single.data()['type'], 'refresh_quotes');
+  });
 }
