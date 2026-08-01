@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'history_tab.dart';
+import 'widgets/pnl.dart';
 import 'widgets/stream_error.dart';
 
 class WatchTab extends ConsumerWidget {
@@ -39,28 +40,40 @@ class WatchTab extends ConsumerWidget {
                         }
                       },
                       child: ListTile(
-                        title: Text(w.ticker),
-                        subtitle: Text(_quoteLine(quotes[w.ticker])),
+                        title: Text(w.ticker,
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                        subtitle: InkWell(
+                          onTap: () => ref.read(repoProvider).setDeepFreq(
+                              w.ticker, w.deepFreq == 'weekly' ? 'manual' : 'weekly'),
+                          child: Text(
+                            w.deepFreq == 'weekly' ? '每周自动分析' : '手动分析',
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
+                        ),
                         onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => TickerAnalysesPage(ticker: w.ticker))),
-                        leading: ActionChip(
-                          label: Text(w.deepFreq),
-                          onPressed: () => ref.read(repoProvider).setDeepFreq(
-                              w.ticker, w.deepFreq == 'weekly' ? 'manual' : 'weekly'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _quoteColumn(quotes[w.ticker]),
+                            const SizedBox(width: 8),
+                            activeTickers.containsKey(w.ticker)
+                                ? Chip(label: Text(
+                                    activeTickers[w.ticker] == 'queued' ? '排队中' : '分析中'))
+                                : FilledButton.tonal(
+                                    style: FilledButton.styleFrom(
+                                        visualDensity: VisualDensity.compact),
+                                    onPressed: () async {
+                                      await ref.read(repoProvider).enqueueDeepAnalysis(w.ticker);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('${w.ticker} 已排队')));
+                                      }
+                                    },
+                                    child: const Text('分析')),
+                          ],
                         ),
-                        trailing: activeTickers.containsKey(w.ticker)
-                            ? Chip(label: Text(
-                                activeTickers[w.ticker] == 'queued' ? '排队中' : '分析中'))
-                            : TextButton(
-                                onPressed: () async {
-                                  await ref.read(repoProvider).enqueueDeepAnalysis(w.ticker);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('${w.ticker} 已排队')));
-                                  }
-                                },
-                                child: const Text('分析')),
                       ),
                     ),
                 ],
@@ -76,9 +89,18 @@ class WatchTab extends ConsumerWidget {
     );
   }
 
-  String _quoteLine(TickerQuote? q) => q == null
-      ? '—'
-      : '\$${q.close.toStringAsFixed(2)}  ${q.pctChange >= 0 ? '+' : ''}${q.pctChange.toStringAsFixed(2)}%';
+  Widget _quoteColumn(TickerQuote? q) {
+    if (q == null) return const Text('—');
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        MoneyText(q.close),
+        const SizedBox(height: 2),
+        PnlPill(q.pctChange),
+      ],
+    );
+  }
 }
 
 class _AddWatchDialog extends StatefulWidget {
