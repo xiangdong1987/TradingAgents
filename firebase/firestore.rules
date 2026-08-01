@@ -1,12 +1,11 @@
 // firebase/firestore.rules
-// Single-user lock: replace OWNER_UID with the UID of the one account you
-// create in Firebase console (Authentication -> Users). The assistant runner
-// uses the Admin SDK and bypasses these rules by design.
+// Locked to the single app account's UID (Firebase console: Authentication -> Users).
+// The assistant runner uses the Admin SDK and bypasses these rules by design.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == "OWNER_UID";
+      allow read, write: if request.auth != null && request.auth.uid == "oaItzb3ZpvR9uD7h9qrVoghPFei2";
     }
   }
 }

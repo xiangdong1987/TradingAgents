@@ -226,3 +226,16 @@ reports/
 firebase-service-account.json
 # Local run artifacts when TRADINGAGENTS_RESULTS_DIR points into the repo
 results/
+
+# Flutter (app/)
+app/.dart_tool/
+app/build/
+app/.flutter-plugins*
+app/android/.gradle/
+app/android/local.properties
+app/macos/Pods/
+
+# The generic Python "lib/" ignore rule above (packaging section) would also
+# match app/lib/ since it has no leading slash; un-ignore the Flutter source dir.
+!app/lib/
+!app/lib/**
