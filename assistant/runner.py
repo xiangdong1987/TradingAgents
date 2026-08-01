@@ -180,6 +180,14 @@ def main(argv=None) -> int:
     import time
 
     logger.info("watch mode: pulling jobs every %d s (Ctrl-C to stop)", args.watch)
+    # 单机单消费者：本进程启动即意味着旧 runner 已死，遗留的 running 任务
+    # 全部是被杀进程的遗孤，直接回收重排（否则要等 2 小时僵尸清理）。
+    try:
+        orphans = store.requeue_running_jobs()
+        if orphans:
+            logger.warning("requeued %d orphaned running job(s)", orphans)
+    except Exception:
+        logger.exception("orphan requeue failed")
     while True:
         try:
             run_once(store, llm, config)

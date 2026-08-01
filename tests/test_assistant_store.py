@@ -70,3 +70,14 @@ def test_resolve_credentials_path_env_override(tmp_path):
     assert default.endswith(".tradingagents/firebase-service-account.json")
     custom = str(tmp_path / "sa.json")
     assert resolve_credentials_path({"TRADINGAGENTS_FIREBASE_CREDENTIALS": custom}) == custom
+
+
+def test_requeue_running_jobs():
+    s = MemoryStore()
+    j1 = s.add_job({"type": "deep_analysis", "ticker": "KO", "status": "running",
+                    "requestedBy": "user", "createdAt": "x", "startedAt": "y"})
+    j2 = s.add_job({"type": "daily_brief", "status": "done",
+                    "requestedBy": "schedule", "createdAt": "x"})
+    assert s.requeue_running_jobs() == 1
+    assert s.get_job(j1)["status"] == "queued"
+    assert s.get_job(j2)["status"] == "done"

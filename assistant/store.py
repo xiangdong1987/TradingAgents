@@ -37,6 +37,7 @@ class Store(Protocol):
     def claim_queued_jobs(self) -> list[dict]: ...
     def update_job(self, jid: str, fields: dict) -> None: ...
     def fail_zombie_jobs(self, cutoff_iso: str) -> int: ...
+    def requeue_running_jobs(self) -> int: ...
 
 
 class MemoryStore:
@@ -176,6 +177,14 @@ class MemoryStore:
                 n += 1
         return n
 
+    def requeue_running_jobs(self) -> int:
+        n = 0
+        for job in self._jobs.values():
+            if job.get("status") == "running":
+                job["status"] = "queued"
+                n += 1
+        return n
+
 
 def resolve_credentials_path(env: dict | None = None) -> str:
     env = os.environ if env is None else env
@@ -305,4 +314,12 @@ class FirestoreStore:
             if snap.to_dict().get("startedAt", "") < cutoff_iso:
                 snap.reference.update({"status": "failed", "error": "runner killed"})
                 n += 1
+        return n
+
+    def requeue_running_jobs(self) -> int:
+        n = 0
+        q = self._db.collection("jobs").where("status", "==", "running")
+        for snap in q.stream():
+            snap.reference.update({"status": "queued"})
+            n += 1
         return n
