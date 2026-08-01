@@ -28,17 +28,24 @@ class PortfolioTab extends ConsumerWidget {
             child: InkWell(
               onTap: () => showDialog<void>(
                   context: context,
-                  builder: (_) => _CashDialog(ref: ref, current: meta.cash)),
+                  builder: (_) => _CashDialog(
+                      ref: ref, current: meta.cash, currency: meta.currency)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
                     Expanded(
                         child: _OverviewColumn(
-                            label: '现金', value: MoneyText(summary.cash, size: 20))),
+                            label: '现金',
+                            value: summary.cashEur == null
+                                ? const Text('—')
+                                : MoneyText(summary.cashEur!, size: 20, prefix: '€'))),
                     Expanded(
                         child: _OverviewColumn(
-                            label: '总市值', value: MoneyText(summary.total, size: 20))),
+                            label: '总市值',
+                            value: summary.totalEur == null
+                                ? const Text('—')
+                                : MoneyText(summary.totalEur!, size: 20, prefix: '€'))),
                     Expanded(
                         child: _OverviewColumn(
                             label: '浮动盈亏',
@@ -105,7 +112,8 @@ class PortfolioTab extends ConsumerWidget {
   Widget _positionTrailing(Position p, TickerQuote? q) {
     if (q == null) return const Text('现价 —');
     final pnl = (q.close - p.avgCost) / p.avgCost * 100;
-    return PriceWithPill(price: q.close, pct: pnl);
+    return PriceWithPill(
+        price: q.close, pct: pnl, prefix: currencyPrefix(p.ticker));
   }
 }
 
@@ -132,7 +140,9 @@ class _OverviewColumn extends StatelessWidget {
 }
 
 class _CashDialog extends StatefulWidget {
-  const _CashDialog({required this.ref, required this.current});
+  const _CashDialog(
+      {required this.ref, required this.current, this.currency = 'EUR'});
+  final String currency;
   final WidgetRef ref;
   final double current;
 
@@ -142,6 +152,7 @@ class _CashDialog extends StatefulWidget {
 
 class _CashDialogState extends State<_CashDialog> {
   late final _cash = TextEditingController(text: widget.current.toStringAsFixed(2));
+  late String _currency = widget.currency == 'USD' ? 'USD' : 'EUR';
 
   @override
   void dispose() {
@@ -152,7 +163,7 @@ class _CashDialogState extends State<_CashDialog> {
   Future<void> _save() async {
     final cash = double.tryParse(_cash.text);
     if (cash == null || cash < 0) return;
-    await widget.ref.read(repoProvider).setCash(cash);
+    await widget.ref.read(repoProvider).setCash(cash, currency: _currency);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -160,11 +171,25 @@ class _CashDialogState extends State<_CashDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('编辑现金'),
-      content: TextField(
-        key: const Key('cashField'),
-        controller: _cash,
-        decoration: const InputDecoration(labelText: '现金'),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            key: const Key('cashField'),
+            controller: _cash,
+            decoration: const InputDecoration(labelText: '现金'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'EUR', label: Text('€ EUR')),
+              ButtonSegment(value: 'USD', label: Text('\$ USD')),
+            ],
+            selected: {_currency},
+            onSelectionChanged: (s) => setState(() => _currency = s.first),
+          ),
+        ],
       ),
       actions: [
         TextButton(

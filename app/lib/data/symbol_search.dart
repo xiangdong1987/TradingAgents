@@ -70,6 +70,58 @@ const Map<String, String> zhAliases = {
   'VOO': '先锋标普500 ETF',
 };
 
+/// 米兰交易所（Borsa Italiana，Yahoo `.MI` 后缀）常用标的：FTSE MIB 成分股 +
+/// 常见 UCITS ETF。全部经 yfinance 实测可取行情（2026-08）。
+const List<SymbolEntry> milanEntries = [
+  SymbolEntry(symbol: 'ENEL.MI', name: 'Enel S.p.A.', alias: '意大利国家电力'),
+  SymbolEntry(symbol: 'ENI.MI', name: 'Eni S.p.A.', alias: '埃尼石油'),
+  SymbolEntry(symbol: 'ISP.MI', name: 'Intesa Sanpaolo', alias: '联合圣保罗银行'),
+  SymbolEntry(symbol: 'UCG.MI', name: 'UniCredit', alias: '裕信银行'),
+  SymbolEntry(symbol: 'STLAM.MI', name: 'Stellantis N.V.', alias: '斯泰兰蒂斯'),
+  SymbolEntry(symbol: 'RACE.MI', name: 'Ferrari N.V.', alias: '法拉利'),
+  SymbolEntry(symbol: 'STMMI.MI', name: 'STMicroelectronics', alias: '意法半导体'),
+  SymbolEntry(symbol: 'G.MI', name: 'Assicurazioni Generali', alias: '忠利保险'),
+  SymbolEntry(symbol: 'TIT.MI', name: 'Telecom Italia', alias: '意大利电信'),
+  SymbolEntry(symbol: 'LDO.MI', name: 'Leonardo S.p.A.', alias: '莱昂纳多'),
+  SymbolEntry(symbol: 'PST.MI', name: 'Poste Italiane', alias: '意大利邮政'),
+  SymbolEntry(symbol: 'MB.MI', name: 'Mediobanca'),
+  SymbolEntry(symbol: 'BMED.MI', name: 'Banca Mediolanum'),
+  SymbolEntry(symbol: 'BAMI.MI', name: 'Banco BPM'),
+  SymbolEntry(symbol: 'BPE.MI', name: 'BPER Banca'),
+  SymbolEntry(symbol: 'MONC.MI', name: 'Moncler', alias: '盟可睐'),
+  SymbolEntry(symbol: 'CPR.MI', name: 'Davide Campari-Milano', alias: '金巴利'),
+  SymbolEntry(symbol: 'A2A.MI', name: 'A2A S.p.A.'),
+  SymbolEntry(symbol: 'TRN.MI', name: 'Terna'),
+  SymbolEntry(symbol: 'SRG.MI', name: 'Snam'),
+  SymbolEntry(symbol: 'PRY.MI', name: 'Prysmian'),
+  SymbolEntry(symbol: 'TEN.MI', name: 'Tenaris'),
+  SymbolEntry(symbol: 'SPM.MI', name: 'Saipem'),
+  SymbolEntry(symbol: 'AMP.MI', name: 'Amplifon'),
+  SymbolEntry(symbol: 'DIA.MI', name: 'DiaSorin'),
+  SymbolEntry(symbol: 'FBK.MI', name: 'FinecoBank'),
+  SymbolEntry(symbol: 'HER.MI', name: 'Hera'),
+  SymbolEntry(symbol: 'IG.MI', name: 'Italgas'),
+  SymbolEntry(symbol: 'INW.MI', name: 'Infrastrutture Wireless Italiane'),
+  SymbolEntry(symbol: 'IVG.MI', name: 'Iveco Group', alias: '依维柯'),
+  SymbolEntry(symbol: 'NEXI.MI', name: 'Nexi'),
+  SymbolEntry(symbol: 'PIRC.MI', name: 'Pirelli & C.', alias: '倍耐力'),
+  SymbolEntry(symbol: 'REC.MI', name: 'Recordati'),
+  SymbolEntry(symbol: 'AZM.MI', name: 'Azimut Holding'),
+  SymbolEntry(symbol: 'BGN.MI', name: 'Banca Generali'),
+  SymbolEntry(symbol: 'UNI.MI', name: 'Unipol Gruppo'),
+  SymbolEntry(symbol: 'ERG.MI', name: 'ERG S.p.A.'),
+  SymbolEntry(symbol: 'IP.MI', name: 'Interpump Group'),
+  SymbolEntry(symbol: 'BZU.MI', name: 'Buzzi'),
+  SymbolEntry(symbol: 'BC.MI', name: 'Brunello Cucinelli'),
+  SymbolEntry(symbol: 'IOT.MI', name: 'Seco S.p.A.'),
+  SymbolEntry(symbol: 'VUAA.MI', name: 'Vanguard S&P 500 UCITS ETF (Acc)', alias: '标普500 ETF'),
+  SymbolEntry(symbol: 'VWCE.MI', name: 'Vanguard FTSE All-World UCITS ETF', alias: '全球股票 ETF'),
+  SymbolEntry(symbol: 'SWDA.MI', name: 'iShares Core MSCI World UCITS ETF', alias: '全球发达市场 ETF'),
+  SymbolEntry(symbol: 'EIMI.MI', name: 'iShares Core MSCI EM IMI UCITS ETF', alias: '新兴市场 ETF'),
+  SymbolEntry(symbol: 'CSSPX.MI', name: 'iShares Core S&P 500 UCITS ETF', alias: '标普500 ETF'),
+  SymbolEntry(symbol: 'SGLD.MI', name: 'Invesco Physical Gold ETC', alias: '黄金 ETC'),
+];
+
 class SymbolIndex {
   SymbolIndex(this._entries);
 
@@ -99,6 +151,7 @@ class SymbolIndex {
       entries.add(SymbolEntry(
           symbol: symbol, name: name, alias: zhAliases[symbol] ?? ''));
     }
+    entries.addAll(milanEntries);
     return SymbolIndex(entries);
   }
 

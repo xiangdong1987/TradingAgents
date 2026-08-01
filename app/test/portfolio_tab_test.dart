@@ -39,6 +39,7 @@ Future<void> _seedOverview(FakeFirebaseFirestore db) async {
     'date': '2026-08-01', 'markdownZh': 'x', 'tickers': ['NVDA', 'AAPL'],
     'createdAt': '2026-08-01T00:00:00+00:00',
     'quotes': {
+      'EURUSD=X': {'close': 1.25, 'pctChange': 0.0},
       'NVDA': {'close': 200.75, 'pctChange': 2.93},
       'AAPL': {'close': 90.0, 'pctChange': -10.0},
     },
@@ -51,11 +52,11 @@ void main() {
     await _seedOverview(db);
     await tester.pumpWidget(_wrap(db));
     await tester.pumpAndSettle();
-    // 现金 5000；总市值 = 5000 + 10*200.75(NVDA) + 5*90(AAPL) = 7457.50；
-    // 组合总浮动盈亏 = (2457.50 - 2000) / 2000 = +22.88%，
+    // 汇率 1.25：现金 5000USD→€4000；股票市值 2457.50USD→€1966；
+    // 总市值 €5966.00；总浮动盈亏 = (2457.5-2000)/2000 = +22.88%（折算不变），
     // 与 NVDA 自身 +33.83% 、AAPL 自身 -10.00% 均不同，可唯一定位总览行文本。
-    expect(find.textContaining('5000.00'), findsOneWidget);      // 现金
-    expect(find.textContaining('7457.50'), findsOneWidget);      // 总市值
+    expect(find.textContaining('€4000.00'), findsOneWidget);     // 现金（欧元）
+    expect(find.textContaining('€5966.00'), findsOneWidget);     // 总市值（欧元）
     expect(find.textContaining('22.88'), findsOneWidget);        // 总浮动盈亏
     expect(find.textContaining('NVDA'), findsWidgets);
     expect(find.textContaining('AAPL'), findsWidgets);

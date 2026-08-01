@@ -57,7 +57,7 @@ class WatchTab extends ConsumerWidget {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _quoteColumn(quotes[w.ticker]),
+                            _quoteColumn(w.ticker, quotes[w.ticker]),
                             const SizedBox(width: 8),
                             activeTickers.containsKey(w.ticker)
                                 ? Chip(label: Text(
@@ -90,9 +90,10 @@ class WatchTab extends ConsumerWidget {
     );
   }
 
-  Widget _quoteColumn(TickerQuote? q) {
+  Widget _quoteColumn(String ticker, TickerQuote? q) {
     if (q == null) return const Text('—');
-    return PriceWithPill(price: q.close, pct: q.pctChange);
+    return PriceWithPill(
+        price: q.close, pct: q.pctChange, prefix: currencyPrefix(ticker));
   }
 }
 

@@ -47,13 +47,18 @@ class PnlPill extends StatelessWidget {
   }
 }
 
+/// `$` for US listings, `€` for Borsa Italiana (`.MI`).
+String currencyPrefix(String ticker) => ticker.endsWith('.MI') ? '€' : '\$';
+
 /// Right-aligned price-over-pill stack sized to fit a [ListTile.trailing]
 /// slot (which caps children at ~48px): 15sp price + compact pill.
 class PriceWithPill extends StatelessWidget {
-  const PriceWithPill({super.key, required this.price, required this.pct});
+  const PriceWithPill(
+      {super.key, required this.price, required this.pct, this.prefix = ''});
 
   final double price;
   final double pct;
+  final String prefix;
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +67,7 @@ class PriceWithPill extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        MoneyText(price, size: 15),
+        MoneyText(price, size: 15, prefix: prefix),
         const SizedBox(height: 2),
         PnlPill(pct, compact: true),
       ],
@@ -72,17 +77,20 @@ class PriceWithPill extends StatelessWidget {
 
 /// Bold tabular-figure money text: `value.toStringAsFixed(2)`.
 class MoneyText extends StatelessWidget {
-  const MoneyText(this.value, {super.key, this.size = 17.0, this.weight = FontWeight.w700, this.color});
+  const MoneyText(this.value,
+      {super.key, this.size = 17.0, this.weight = FontWeight.w700, this.color,
+      this.prefix = ''});
 
   final double value;
   final double size;
   final FontWeight weight;
   final Color? color;
+  final String prefix;
 
   @override
   Widget build(BuildContext context) {
     return Text(
-      value.toStringAsFixed(2),
+      '$prefix${value.toStringAsFixed(2)}',
       style: TextStyle(
         fontSize: size,
         fontWeight: weight,

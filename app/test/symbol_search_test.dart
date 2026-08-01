@@ -41,6 +41,14 @@ void main() {
     expect(index.search('zzzz不存在'), isEmpty);
   });
 
+
+  test('milan entries are searchable by symbol and chinese alias', () {
+    final enel = index.search('enel');
+    expect(enel.first.symbol, 'ENEL.MI');
+    final ferrari = index.search('法拉利');
+    expect(ferrari.single.symbol, 'RACE.MI');
+  });
+
   testWidgets('TickerField shows suggestions and fills symbol on tap',
       (tester) async {
     SymbolIndex.instance = index; // 预置索引，避免测试读资产

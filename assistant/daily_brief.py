@@ -73,6 +73,7 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
         positions_block="\n".join(position_parts) or "（无持仓）",
         tickers_block="\n\n".join(ticker_parts) or "（自选与持仓均为空）",
     )
+    _add_fx_if_needed(quotes_map, tickers, fetch_quote)
     markdown = llm.invoke(prompt).content
     store.save_brief(today, {
         "date": today,
@@ -118,6 +119,20 @@ def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
         except Exception:
             continue
         added[t] = {"close": q["close"], "pctChange": q["pctChange"]}
+    if "EURUSD=X" not in existing:
+        _add_fx_if_needed(added, tickers, fetch_quote)
     if added:
         store.merge_brief_quotes(brief_date, added)
     return len(added)
+
+
+def _add_fx_if_needed(quotes_map: dict, tickers, fetch_quote) -> None:
+    """Always ship the EURUSD rate: the client displays US listings in USD,
+    Borsa Italiana (``.MI``) in EUR, and converts portfolio TOTALS to EUR."""
+    if "EURUSD=X" in quotes_map:
+        return
+    try:
+        q = fetch_quote("EURUSD=X")
+        quotes_map["EURUSD=X"] = {"close": q["close"], "pctChange": q["pctChange"]}
+    except Exception:
+        pass

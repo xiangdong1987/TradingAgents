@@ -1,39 +1,69 @@
 // app/lib/logic/portfolio_math.dart
 /// Pure portfolio arithmetic shared by the today/portfolio tabs' overview
-/// cards. No Firestore/Flutter dependency — just the same math both tabs
-/// used to duplicate.
+/// cards. No Firestore/Flutter dependency.
+///
+/// 计价规则：美股按 USD、米兰上市（.MI）按 EUR 报价；**组合总额一律折算成
+/// EUR**。汇率取日报 quotes 里的 `EURUSD=X`（1 EUR 兑多少 USD）；汇率缺失时
+/// 无法折算的聚合值为 null（UI 显示 —），单股原币种展示不受影响。
 library;
 
 import '../models/models.dart';
 
+/// Borsa Italiana listings are EUR-quoted.
+bool isEurListing(String ticker) => ticker.endsWith('.MI');
+
 class PortfolioSummary {
   const PortfolioSummary({
-    required this.cash,
-    required this.stockValue,
-    required this.cost,
+    required this.cashEur,
+    required this.stockValueEur,
+    required this.costEur,
     required this.pnlPct,
   });
 
-  final double cash;
-  final double stockValue;
-  final double cost;
+  final double? cashEur;
+  final double? stockValueEur;
+  final double? costEur;
   final double? pnlPct;
 
-  double get total => cash + stockValue;
+  double? get totalEur => (cashEur == null || stockValueEur == null)
+      ? null
+      : cashEur! + stockValueEur!;
 }
 
-/// Missing quotes fall back to cost basis for valuation; `pnlPct` is only
-/// populated once at least one held ticker has a live quote (otherwise the
-/// "gain" would just be measuring cost against itself).
+/// Missing per-ticker quotes fall back to cost basis for valuation; `pnlPct`
+/// is only populated once at least one held ticker has a live quote.
 PortfolioSummary summarize(
   List<Position> positions,
   PortfolioMeta meta,
   Map<String, TickerQuote> quotes,
 ) {
-  double priceOf(Position p) => quotes[p.ticker]?.close ?? p.avgCost;
-  final stockValue = positions.fold<double>(0, (sum, p) => sum + p.shares * priceOf(p));
-  final cost = positions.fold<double>(0, (sum, p) => sum + p.shares * p.avgCost);
-  final hasQuote = positions.any((p) => quotes.containsKey(p.ticker));
-  final pnlPct = (cost > 0 && hasQuote) ? (stockValue - cost) / cost * 100 : null;
-  return PortfolioSummary(cash: meta.cash, stockValue: stockValue, cost: cost, pnlPct: pnlPct);
+  final rate = quotes['EURUSD=X']?.close; // USD per 1 EUR
+
+  double? usdToEur(double v) => (rate == null || rate == 0) ? null : v / rate;
+  double? toEur(String ticker, double native) =>
+      isEurListing(ticker) ? native : usdToEur(native);
+
+  double? stockValue = 0.0;
+  double? cost = 0.0;
+  var hasQuote = false;
+  for (final p in positions) {
+    final priceNative = quotes[p.ticker]?.close ?? p.avgCost;
+    if (quotes.containsKey(p.ticker)) hasQuote = true;
+    final v = toEur(p.ticker, p.shares * priceNative);
+    final c = toEur(p.ticker, p.shares * p.avgCost);
+    if (v == null || c == null) {
+      stockValue = null;
+      cost = null;
+      break;
+    }
+    stockValue = stockValue! + v;
+    cost = cost! + c;
+  }
+
+  final cashEur = meta.currency == 'EUR' ? meta.cash : usdToEur(meta.cash);
+  final pnlPct = (cost != null && cost > 0 && hasQuote && stockValue != null)
+      ? (stockValue - cost) / cost * 100
+      : null;
+  return PortfolioSummary(
+      cashEur: cashEur, stockValueEur: stockValue, costEur: cost, pnlPct: pnlPct);
 }

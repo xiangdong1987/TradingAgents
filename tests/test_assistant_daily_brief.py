@@ -101,10 +101,11 @@ def test_top_up_quotes_fills_only_missing_tickers():
         "quotes": {"NVDA": {"close": 100.0, "pctChange": 1.0}},
     })
     added = top_up_quotes(store, "2026-08-01", fetch_quote=ok_quote)
-    assert added == 1                                   # 只补 AAPL
+    assert added == 2                                   # 补 AAPL + EURUSD 汇率
     quotes = store.get_brief("2026-08-01")["quotes"]
     assert quotes["NVDA"] == {"close": 100.0, "pctChange": 1.0}   # 原值保留
     assert quotes["AAPL"] == {"close": 110.0, "pctChange": 10.0}
+    assert "EURUSD=X" in quotes
 
 
 def test_top_up_quotes_looks_back_to_latest_brief_and_survives_failures():
@@ -123,8 +124,9 @@ def test_top_up_quotes_looks_back_to_latest_brief_and_survives_failures():
         return ok_quote(ticker)
 
     added = top_up_quotes(store, "2026-08-02", fetch_quote=flaky)
-    assert added == 1                                   # AAPL 成功，NVDA 失败跳过
-    assert "AAPL" in store.get_brief("2026-07-31")["quotes"]
+    assert added == 2                                   # AAPL+汇率成功，NVDA 失败跳过
+    quotes = store.get_brief("2026-07-31")["quotes"]
+    assert "AAPL" in quotes and "EURUSD=X" in quotes and "NVDA" not in quotes
 
 
 def test_top_up_quotes_no_brief_or_no_tickers_is_noop():
@@ -135,3 +137,28 @@ def test_top_up_quotes_no_brief_or_no_tickers_is_noop():
     empty = MemoryStore()
     empty.save_brief("2026-08-01", {"date": "2026-08-01", "quotes": {}})
     assert top_up_quotes(empty, "2026-08-01", fetch_quote=ok_quote) == 0         # 无股票
+
+
+def test_brief_always_includes_eurusd_rate():
+    store, llm = make_store(), FakeLLM()
+    store.seed_watchlist([{"ticker": "ENEL.MI", "deepFreq": "manual", "note": "", "addedAt": "x"}])
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n")
+    assert "EURUSD=X" in store.get_brief("2026-08-01")["quotes"]
+
+    store2, llm2 = make_store(), FakeLLM()   # 纯美股也带汇率（总额按欧元计价）
+    generate_daily_brief(store2, llm2, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n")
+    assert "EURUSD=X" in store2.get_brief("2026-08-01")["quotes"]
+
+
+def test_top_up_adds_fx_for_milan_tickers():
+    from assistant.daily_brief import top_up_quotes
+
+    store = make_store()
+    store.seed_watchlist([{"ticker": "ENEL.MI", "deepFreq": "manual", "note": "", "addedAt": "x"}])
+    store.save_brief("2026-08-01", {"date": "2026-08-01", "quotes": {}})
+    added = top_up_quotes(store, "2026-08-01", fetch_quote=ok_quote)
+    quotes = store.get_brief("2026-08-01")["quotes"]
+    assert "ENEL.MI" in quotes and "EURUSD=X" in quotes
+    assert added >= 2

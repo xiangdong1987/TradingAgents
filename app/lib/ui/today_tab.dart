@@ -110,7 +110,10 @@ class _OverviewBar extends StatelessWidget {
               child: _OverviewColumn(
                 label: '总市值',
                 labelColor: grey,
-                value: MoneyText(summary.total, size: 22, weight: FontWeight.w800),
+                value: summary.totalEur == null
+                    ? const Text('—')
+                    : MoneyText(summary.totalEur!,
+                        size: 22, weight: FontWeight.w800, prefix: '€'),
               ),
             ),
             Expanded(
@@ -132,7 +135,10 @@ class _OverviewBar extends StatelessWidget {
               child: _OverviewColumn(
                 label: '现金',
                 labelColor: grey,
-                value: MoneyText(summary.cash, size: 20, color: grey),
+                value: summary.cashEur == null
+                    ? const Text('—')
+                    : MoneyText(summary.cashEur!,
+                        size: 20, color: grey, prefix: '€'),
               ),
             ),
           ],

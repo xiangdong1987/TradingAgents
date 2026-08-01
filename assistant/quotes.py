@@ -16,6 +16,12 @@ def _yf_history(ticker: str, start: str, end: str) -> list[tuple[str, float]]:
     df = yf.Ticker(ticker).history(start=start, end=end_excl)
     if df.empty:
         return []
+    # Non-US listings (e.g. Borsa Italiana .MI) can carry all-NaN filler rows
+    # for sessions Yahoo has no data for — drop them or the "last two bars"
+    # arithmetic turns into NaN.
+    df = df.dropna(subset=["Close"])
+    if df.empty:
+        return []
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
     return [(idx.strftime("%Y-%m-%d"), float(row["Close"])) for idx, row in df.iterrows()]
@@ -28,6 +34,8 @@ def get_quote(ticker: str, _history=_yf_history) -> dict:
     if len(rows) < 2:
         raise QuoteUnavailable(f"not enough daily bars for {ticker}")
     prev_close, close = rows[-2][1], rows[-1][1]
+    if not prev_close:
+        raise QuoteUnavailable(f"zero/NaN previous close for {ticker}")
     return {
         "ticker": ticker,
         "close": close,

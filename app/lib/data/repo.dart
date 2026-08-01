@@ -103,10 +103,10 @@ class WealthRepo {
   Future<void> deletePosition(String ticker) =>
       _db.collection('positions').doc(ticker).delete();
 
-  Future<void> setCash(double cash) => _db
+  Future<void> setCash(double cash, {String currency = 'EUR'}) => _db
       .collection('meta')
       .doc('portfolio')
-      .set({'cash': cash, 'currency': 'USD'}, SetOptions(merge: true));
+      .set({'cash': cash, 'currency': currency}, SetOptions(merge: true));
 
   Future<void> addWatch(String ticker, {String deepFreq = 'manual'}) =>
       _db.collection('watchlist').doc(ticker).set({

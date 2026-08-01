@@ -9,43 +9,80 @@ Position _pos(String ticker, double shares, double avgCost) => Position(
       updatedAt: DateTime.utc(2026, 8, 1),
     );
 
+const _fx = TickerQuote(close: 1.25, pctChange: 0.0); // 1 EUR = 1.25 USD
+
 void main() {
-  test('mixed-quote two-position portfolio computes the 22.88% pnl case', () {
+  test('USD portfolio converts totals to EUR via EURUSD rate', () {
     final positions = [_pos('NVDA', 10, 150.0), _pos('AAPL', 5, 100.0)];
     const meta = PortfolioMeta(cash: 5000, currency: 'USD');
     final quotes = {
+      'EURUSD=X': _fx,
       'NVDA': const TickerQuote(close: 200.75, pctChange: 2.93),
       'AAPL': const TickerQuote(close: 90.0, pctChange: -10.0),
     };
 
     final summary = summarize(positions, meta, quotes);
 
-    expect(summary.cash, 5000.0);
-    expect(summary.stockValue, closeTo(2457.5, 1e-9)); // 10*200.75 + 5*90
-    expect(summary.cost, 2000.0); // 10*150 + 5*100
-    expect(summary.total, closeTo(7457.5, 1e-9));
-    expect(summary.pnlPct, closeTo(22.875, 1e-9)); // (2457.5-2000)/2000*100
+    expect(summary.cashEur, closeTo(4000.0, 1e-9)); // 5000/1.25
+    expect(summary.stockValueEur, closeTo(1966.0, 1e-9)); // 2457.5/1.25
+    expect(summary.costEur, closeTo(1600.0, 1e-9)); // 2000/1.25
+    expect(summary.totalEur, closeTo(5966.0, 1e-9));
+    expect(summary.pnlPct, closeTo(22.875, 1e-9)); // 汇率折算不改变盈亏比
   });
 
-  test('no quotes for any held ticker leaves pnlPct null (falls back to cost)', () {
+  test('mixed USD + Milan(EUR) portfolio sums in EUR', () {
+    final positions = [_pos('NVDA', 10, 150.0), _pos('ENEL.MI', 100, 9.0)];
+    const meta = PortfolioMeta(cash: 1000, currency: 'EUR'); // 现金本身是欧元
+    final quotes = {
+      'EURUSD=X': _fx,
+      'NVDA': const TickerQuote(close: 200.75, pctChange: 2.93),
+      'ENEL.MI': const TickerQuote(close: 9.84, pctChange: 0.13),
+    };
+
+    final summary = summarize(positions, meta, quotes);
+
+    expect(summary.cashEur, 1000.0); // EUR 现金不折算
+    // NVDA 2007.5 USD/1.25=1606 EUR；ENEL 100*9.84=984 EUR
+    expect(summary.stockValueEur, closeTo(2590.0, 1e-9));
+    expect(summary.costEur, closeTo(1200.0 + 900.0, 1e-9));
+    expect(summary.pnlPct, closeTo((2590.0 - 2100.0) / 2100.0 * 100, 1e-9));
+  });
+
+  test('missing EURUSD rate nulls USD-dependent aggregates', () {
     final positions = [_pos('NVDA', 10, 150.0)];
     const meta = PortfolioMeta(cash: 1000, currency: 'USD');
 
-    final summary = summarize(positions, meta, const {});
+    final summary = summarize(positions, meta,
+        {'NVDA': const TickerQuote(close: 200.75, pctChange: 2.93)});
 
-    expect(summary.stockValue, 1500.0); // no quote -> priced at avgCost
-    expect(summary.total, 2500.0);
+    expect(summary.cashEur, isNull);
+    expect(summary.stockValueEur, isNull);
+    expect(summary.totalEur, isNull);
     expect(summary.pnlPct, isNull);
   });
 
-  test('empty portfolio has zero values and null pnlPct', () {
-    const meta = PortfolioMeta(cash: 250, currency: 'USD');
+  test('pure Milan portfolio needs no rate; missing quote falls back to cost', () {
+    final positions = [_pos('ENEL.MI', 100, 9.0), _pos('ISP.MI', 50, 6.0)];
+    const meta = PortfolioMeta(cash: 500, currency: 'EUR');
+
+    final summary = summarize(positions, meta,
+        {'ENEL.MI': const TickerQuote(close: 9.84, pctChange: 0.13)});
+
+    // ISP.MI 无行情按成本计：100*9.84 + 50*6 = 1284
+    expect(summary.stockValueEur, closeTo(1284.0, 1e-9));
+    expect(summary.costEur, closeTo(1200.0, 1e-9));
+    expect(summary.totalEur, closeTo(1784.0, 1e-9));
+    expect(summary.pnlPct, closeTo((1284.0 - 1200.0) / 1200.0 * 100, 1e-9));
+  });
+
+  test('empty portfolio: EUR cash passes through, zero stock value', () {
+    const meta = PortfolioMeta(cash: 250, currency: 'EUR');
 
     final summary = summarize(const [], meta, const {});
 
-    expect(summary.stockValue, 0.0);
-    expect(summary.cost, 0.0);
-    expect(summary.total, 250.0);
+    expect(summary.stockValueEur, 0.0);
+    expect(summary.costEur, 0.0);
+    expect(summary.totalEur, 250.0);
     expect(summary.pnlPct, isNull);
   });
 }
