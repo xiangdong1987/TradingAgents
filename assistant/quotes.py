@@ -54,6 +54,33 @@ def get_quote(ticker: str, _history=_yf_history, _fetch_html=None) -> dict:
     }
 
 
+def _yf_history_ohlc(ticker: str, start: str, end: str) -> list[dict]:
+    """Ascending [{date, high, low, close}] daily bars via yfinance. Lazy import."""
+    import yfinance as yf
+
+    end_excl = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    df = yf.Ticker(ticker).history(start=start, end=end_excl)
+    if df.empty:
+        return []
+    df = df.dropna(subset=["Close", "High", "Low"])
+    if df.empty:
+        return []
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+    return [
+        {"date": idx.strftime("%Y-%m-%d"), "high": float(r["High"]),
+         "low": float(r["Low"]), "close": float(r["Close"])}
+        for idx, r in df.iterrows()
+    ]
+
+
+def get_ohlc_history(ticker: str, end_date: str, days: int = 200,
+                     _history=_yf_history_ohlc) -> list[dict]:
+    """~`days` 个自然日的日线 OHLC（升序）。策略层（海龟等）用它算通道和 ATR。"""
+    start = (datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=days)).strftime("%Y-%m-%d")
+    return _history(ticker, start, end_date)
+
+
 def get_return_pct(ticker: str, start_date: str, end_date: str, _history=_yf_history) -> float:
     rows = _history(ticker, start_date, end_date)
     if len(rows) < 2:

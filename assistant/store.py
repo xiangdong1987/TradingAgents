@@ -33,6 +33,10 @@ class Store(Protocol):
     def save_suggestion(self, data: dict) -> str: ...
     def update_suggestion(self, sid: str, fields: dict) -> None: ...
     def suggestions_due_review(self, cutoff_iso: str) -> list[dict]: ...
+    def pending_suggestions(self) -> list[dict]: ...
+    def suggestions_for_ticker(self, ticker: str) -> list[dict]: ...
+    def get_strategy_config(self) -> dict: ...
+    def has_job_today(self, jtype: str, date_str: str, strategy: str | None = None) -> bool: ...
     def add_job(self, data: dict) -> str: ...
     def claim_queued_jobs(self) -> list[dict]: ...
     def update_job(self, jid: str, fields: dict) -> None: ...
@@ -147,6 +151,28 @@ class MemoryStore:
             ):
                 out.append({"id": sid, **s})
         return out
+
+    def pending_suggestions(self) -> list[dict]:
+        return [{"id": sid, **s} for sid, s in self._suggestions.items()
+                if s.get("status") == "pending"]
+
+    def suggestions_for_ticker(self, ticker: str) -> list[dict]:
+        return [{"id": sid, **s} for sid, s in self._suggestions.items()
+                if s.get("ticker") == ticker]
+
+    # --- strategies ---
+    def seed_strategy_config(self, cfg: dict) -> None:
+        self._strategy_cfg = dict(cfg)
+
+    def get_strategy_config(self) -> dict:
+        return dict(getattr(self, "_strategy_cfg", {}) or {})
+
+    def has_job_today(self, jtype: str, date_str: str, strategy: str | None = None) -> bool:
+        return any(
+            j.get("type") == jtype and j.get("date") == date_str
+            and (strategy is None or j.get("strategy") == strategy)
+            for j in self._jobs.values()
+        )
 
     # --- jobs ---
     def add_job(self, data: dict) -> str:
@@ -292,6 +318,27 @@ class FirestoreStore:
             if s.get("createdAt", "") <= cutoff_iso and "outcomePct" not in s:
                 out.append({"id": snap.id, **s})
         return out
+
+    def pending_suggestions(self) -> list[dict]:
+        q = self._db.collection("suggestions").where("status", "==", "pending")
+        return [{"id": snap.id, **snap.to_dict()} for snap in q.stream()]
+
+    def suggestions_for_ticker(self, ticker: str) -> list[dict]:
+        q = self._db.collection("suggestions").where("ticker", "==", ticker)
+        return [{"id": snap.id, **snap.to_dict()} for snap in q.stream()]
+
+    # --- strategies ---
+    def get_strategy_config(self) -> dict:
+        snap = self._db.collection("meta").document("strategies").get()
+        return snap.to_dict() if snap.exists else {}
+
+    def has_job_today(self, jtype: str, date_str: str, strategy: str | None = None) -> bool:
+        # 纯等值条件走 Firestore 内建索引合并，无需复合索引
+        q = (self._db.collection("jobs")
+             .where("type", "==", jtype).where("date", "==", date_str))
+        if strategy is not None:
+            q = q.where("strategy", "==", strategy)
+        return len(list(q.limit(1).stream())) > 0
 
     # --- jobs ---
     def add_job(self, data: dict) -> str:

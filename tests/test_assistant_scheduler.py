@@ -67,3 +67,25 @@ def test_friday_late_wakeup_schedules_both_brief_and_deep_with_et_date():
     jobs = [s.get_job(i) for i in ids]
     assert sorted(j["type"] for j in jobs) == ["daily_brief", "deep_analysis"]
     assert all(j["date"] == "2026-07-31" for j in jobs)
+
+
+def test_daily_strategy_scan_scheduled_once_per_day():
+    s = store_with_watchlist()
+    s.save_brief("2026-07-29", {"date": "2026-07-29"})  # 日报已生成，只看策略
+    s.seed_strategy_config({
+        "turtle": {"enabled": True, "schedule": "daily"},
+        "off": {"enabled": False, "schedule": "daily"},
+        "manual_one": {"enabled": True, "schedule": "manual"},
+    })
+    ids = plan_scheduled_jobs(s, WED_EVENING, is_trading_day=lambda n: True)
+    jobs = [s.get_job(i) for i in ids]
+    assert [(j["type"], j["strategy"]) for j in jobs] == [("strategy_scan", "turtle")]
+    # 同日再规划：已排过，不重复
+    assert plan_scheduled_jobs(s, WED_EVENING, is_trading_day=lambda n: True) == []
+
+
+def test_manual_schedule_strategy_never_auto_queued():
+    s = store_with_watchlist()
+    s.save_brief("2026-07-29", {"date": "2026-07-29"})
+    s.seed_strategy_config({"turtle": {"enabled": True, "schedule": "manual"}})
+    assert plan_scheduled_jobs(s, WED_EVENING, is_trading_day=lambda n: True) == []

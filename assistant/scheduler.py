@@ -47,4 +47,20 @@ def plan_scheduled_jobs(store, now_et: datetime, *, is_trading_day) -> list[str]
                 "requestedBy": "schedule",
                 "createdAt": utc_now_iso(),
             }))
+
+    # 配置了 schedule=daily 的策略：收盘后每天每策略排一次扫描
+    strategy_cfg = store.get_strategy_config()
+    for name, cfg in strategy_cfg.items():
+        if not cfg.get("enabled") or cfg.get("schedule") != "daily":
+            continue
+        if store.has_job_today("strategy_scan", today, strategy=name):
+            continue
+        created.append(store.add_job({
+            "type": "strategy_scan",
+            "strategy": name,
+            "date": today,
+            "status": "queued",
+            "requestedBy": "schedule",
+            "createdAt": utc_now_iso(),
+        }))
     return created

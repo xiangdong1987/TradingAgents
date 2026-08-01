@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def execute_job(store, job: dict, *, brief_fn, deep_fn, refresh_fn=None,
-                chat_fn=None) -> None:
+                chat_fn=None, strategy_fn=None) -> None:
     jid = job["id"]
     try:
         today = job.get("date")
@@ -34,6 +34,12 @@ def execute_job(store, job: dict, *, brief_fn, deep_fn, refresh_fn=None,
                 raise ValueError("chat_fn not wired")
             chat_fn(job["chatId"], today)
             store.update_job(jid, {"status": "done", "finishedAt": utc_now_iso()})
+        elif job["type"] == "strategy_scan":
+            if strategy_fn is None:
+                raise ValueError("strategy_fn not wired")
+            result = strategy_fn(job, today)
+            store.update_job(jid, {"status": "done", "finishedAt": utc_now_iso(),
+                                   **(result or {})})
         else:
             raise ValueError(f"unknown job type: {job['type']}")
     except Exception as exc:

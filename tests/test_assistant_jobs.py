@@ -93,3 +93,27 @@ def test_chat_job_invokes_chat_fn_with_chat_id():
                 chat_fn=lambda cid, today: seen.append((cid, today)))
     assert s.get_job(job["id"])["status"] == "done"
     assert seen[0][0] == "c1"
+
+
+def test_strategy_scan_job_invokes_strategy_fn_and_records_counts():
+    s = MemoryStore()
+    jid = s.add_job({"type": "strategy_scan", "strategy": "turtle", "status": "queued"})
+    seen = {}
+
+    def strategy_fn(job, today):
+        seen["strategy"] = job["strategy"]
+        return {"scanned": 3, "created": 1}
+
+    job = {"id": jid, **s.get_job(jid)}
+    execute_job(s, job, brief_fn=None, deep_fn=None, strategy_fn=strategy_fn)
+    doc = s.get_job(jid)
+    assert seen["strategy"] == "turtle"
+    assert doc["status"] == "done" and doc["scanned"] == 3 and doc["created"] == 1
+
+
+def test_strategy_scan_without_wiring_fails_gracefully():
+    s = MemoryStore()
+    jid = s.add_job({"type": "strategy_scan", "status": "queued"})
+    execute_job(s, {"id": jid, **s.get_job(jid)}, brief_fn=None, deep_fn=None)
+    doc = s.get_job(jid)
+    assert doc["status"] == "failed" and "strategy_fn" in doc["error"]
