@@ -20,14 +20,10 @@ class PortfolioTab extends ConsumerWidget {
         positions.fold<double>(0, (sum, p) => sum + p.shares * priceOf(p));
     final total = meta.cash + stockValue;
     final cost = positions.fold<double>(0, (s, p) => s + p.shares * p.avgCost);
-    // 总浮动盈亏 % 以整个组合的投入成本（现金 + 持仓成本）为分母，而非仅持仓成本：
-    // 现金部分不产生盈亏，纳入分母才能正确稀释总体收益率，且在只有一只持仓时
-    // 与该持仓自身盈亏 % 区分开（否则两处文本数值恒等，UI 上无法区分）。
-    final totalCostBasis = meta.cash + cost;
+    // 总浮动盈亏 % 相对持仓投入成本计算（不含现金——现金已单独展示，且现金本身不产生盈亏，
+    // 计入分母会人为稀释持仓的真实收益率）。
     final hasQuote = positions.any((p) => quotes.containsKey(p.ticker));
-    final pnlPct = (totalCostBasis > 0 && hasQuote)
-        ? (total - totalCostBasis) / totalCostBasis * 100
-        : null;
+    final pnlPct = (cost > 0 && hasQuote) ? (stockValue - cost) / cost * 100 : null;
 
     return Scaffold(
       body: ListView(
@@ -168,7 +164,10 @@ class _PositionDialogState extends State<_PositionDialog> {
     final existing = widget.existing;
     if (existing == null) return;
     await widget.ref.read(repoProvider).deletePosition(existing.ticker);
-    if (mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text('已删除 ${existing.ticker}')));
   }
 
   @override

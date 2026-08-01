@@ -23,16 +23,42 @@ Future<void> _seed(FakeFirebaseFirestore db) async {
   });
 }
 
+// 两只持仓，且各自涨跌方向相反，令组合总浮动盈亏 % 必然不同于任意单一持仓的盈亏 %——
+// 避免 `find.textContaining` 因数值巧合命中总览与持仓行两处而产生误判。
+Future<void> _seedOverview(FakeFirebaseFirestore db) async {
+  await db.collection('positions').doc('NVDA').set({
+    'ticker': 'NVDA', 'shares': 10, 'avgCost': 150.0,
+    'updatedAt': '2026-08-01T00:00:00+00:00',
+  });
+  await db.collection('positions').doc('AAPL').set({
+    'ticker': 'AAPL', 'shares': 5, 'avgCost': 100.0,
+    'updatedAt': '2026-08-01T00:00:00+00:00',
+  });
+  await db.collection('meta').doc('portfolio').set({'cash': 5000.0, 'currency': 'USD'});
+  await db.collection('briefs').doc('2026-08-01').set({
+    'date': '2026-08-01', 'markdownZh': 'x', 'tickers': ['NVDA', 'AAPL'],
+    'createdAt': '2026-08-01T00:00:00+00:00',
+    'quotes': {
+      'NVDA': {'close': 200.75, 'pctChange': 2.93},
+      'AAPL': {'close': 90.0, 'pctChange': -10.0},
+    },
+  });
+}
+
 void main() {
   testWidgets('overview shows cash, market value and pnl from quotes', (tester) async {
     final db = FakeFirebaseFirestore();
-    await _seed(db);
+    await _seedOverview(db);
     await tester.pumpWidget(_wrap(db));
     await tester.pumpAndSettle();
+    // 现金 5000；总市值 = 5000 + 10*200.75(NVDA) + 5*90(AAPL) = 7457.50；
+    // 组合总浮动盈亏 = (2457.50 - 2000) / 2000 = +22.88%，
+    // 与 NVDA 自身 +33.83% 、AAPL 自身 -10.00% 均不同，可唯一定位总览行文本。
     expect(find.textContaining('5000.00'), findsOneWidget);      // 现金
-    expect(find.textContaining('7007.50'), findsOneWidget);      // 5000 + 10*200.75
-    expect(find.textContaining('33.83'), findsOneWidget);        // (200.75-150)/150
+    expect(find.textContaining('7457.50'), findsOneWidget);      // 总市值
+    expect(find.textContaining('22.88'), findsOneWidget);        // 总浮动盈亏
     expect(find.textContaining('NVDA'), findsWidgets);
+    expect(find.textContaining('AAPL'), findsWidgets);
   });
 
   testWidgets('edit cash via dialog', (tester) async {
@@ -81,5 +107,6 @@ void main() {
     await tester.tap(find.byKey(const Key('posDelete')));
     await tester.pumpAndSettle();
     expect((await db.collection('positions').doc('NVDA').get()).exists, isFalse);
+    expect(find.textContaining('已删除 NVDA'), findsOneWidget);
   });
 }
