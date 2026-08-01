@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'portfolio_tab.dart';
 import 'today_tab.dart';
 import 'watch_tab.dart';
 
@@ -16,7 +17,7 @@ class _HomeShellState extends State<HomeShell> {
   final _tabs = const [
     TodayTab(),
     WatchTab(),
-    Center(child: Text('持仓（建设中）')),
+    PortfolioTab(),
     Center(child: Text('历史（建设中）')),
   ];
 

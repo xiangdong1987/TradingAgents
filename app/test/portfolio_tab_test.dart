@@ -1,0 +1,85 @@
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:wealth_assistant/providers.dart';
+import 'package:wealth_assistant/ui/portfolio_tab.dart';
+
+Widget _wrap(FakeFirebaseFirestore db) => ProviderScope(
+      overrides: [firestoreProvider.overrideWithValue(db)],
+      child: const MaterialApp(home: Scaffold(body: PortfolioTab())),
+    );
+
+Future<void> _seed(FakeFirebaseFirestore db) async {
+  await db.collection('positions').doc('NVDA').set({
+    'ticker': 'NVDA', 'shares': 10, 'avgCost': 150.0,
+    'updatedAt': '2026-08-01T00:00:00+00:00',
+  });
+  await db.collection('meta').doc('portfolio').set({'cash': 5000.0, 'currency': 'USD'});
+  await db.collection('briefs').doc('2026-08-01').set({
+    'date': '2026-08-01', 'markdownZh': 'x', 'tickers': ['NVDA'],
+    'createdAt': '2026-08-01T00:00:00+00:00',
+    'quotes': {'NVDA': {'close': 200.75, 'pctChange': 2.93}},
+  });
+}
+
+void main() {
+  testWidgets('overview shows cash, market value and pnl from quotes', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await _seed(db);
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('5000.00'), findsOneWidget);      // 现金
+    expect(find.textContaining('7007.50'), findsOneWidget);      // 5000 + 10*200.75
+    expect(find.textContaining('33.83'), findsOneWidget);        // (200.75-150)/150
+    expect(find.textContaining('NVDA'), findsWidgets);
+  });
+
+  testWidgets('edit cash via dialog', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await _seed(db);
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cashCard')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('cashField')), '8888');
+    await tester.tap(find.byKey(const Key('cashSave')));
+    await tester.pumpAndSettle();
+    expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 8888.0);
+  });
+
+  testWidgets('add position via FAB dialog', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.text('暂无持仓'), findsOneWidget);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('posTicker')), 'aapl');
+    await tester.enterText(find.byKey(const Key('posShares')), '5');
+    await tester.enterText(find.byKey(const Key('posAvgCost')), '180.5');
+    await tester.tap(find.byKey(const Key('posSave')));
+    await tester.pumpAndSettle();
+    final doc = (await db.collection('positions').doc('AAPL').get()).data()!;
+    expect(doc['shares'], 5.0);
+    expect(doc['avgCost'], 180.5);
+  });
+
+  testWidgets('edit and delete existing position', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await _seed(db);
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('NVDA').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('posShares')), '20');
+    await tester.tap(find.byKey(const Key('posSave')));
+    await tester.pumpAndSettle();
+    expect((await db.collection('positions').doc('NVDA').get()).data()!['shares'], 20.0);
+    await tester.tap(find.textContaining('NVDA').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('posDelete')));
+    await tester.pumpAndSettle();
+    expect((await db.collection('positions').doc('NVDA').get()).exists, isFalse);
+  });
+}

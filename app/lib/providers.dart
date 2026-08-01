@@ -15,3 +15,6 @@ final pendingSuggestionsProvider =
     StreamProvider<List<Suggestion>>((ref) => ref.watch(repoProvider).pendingSuggestions());
 final activeJobsProvider = StreamProvider<List<Job>>((ref) => ref.watch(repoProvider).activeJobs());
 final watchlistProvider = StreamProvider<List<WatchItem>>((ref) => ref.watch(repoProvider).watchlist());
+final positionsProvider = StreamProvider<List<Position>>((ref) => ref.watch(repoProvider).positions());
+final portfolioMetaProvider =
+    StreamProvider<PortfolioMeta>((ref) => ref.watch(repoProvider).portfolioMeta());
