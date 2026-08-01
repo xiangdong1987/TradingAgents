@@ -71,6 +71,7 @@ def test_run_once_runs_all_four_stages_in_order():
         graph_factory=lambda cfg: FakeGraph("BUY"),
         fetch_quote=fake_quote, fetch_news=fake_news,
         trading_day_resolver=lambda d: d,
+        fetch_calendar=lambda t: {},
     )
 
     assert result == 0
@@ -157,3 +158,27 @@ def test_weekend_deep_analysis_uses_last_trading_day():
     assert result == 0
     assert seen_dates == ["2026-07-31"]
     assert store.get_job(job_id)["status"] == "done"
+
+
+def test_calendar_refreshes_once_per_day():
+    store = MemoryStore()
+    store.seed_watchlist([{"ticker": "NVDA", "deepFreq": "manual", "note": "", "addedAt": "x"}])
+    calls = []
+
+    def fake_cal(ticker):
+        calls.append(ticker)
+        return {"Ex-Dividend Date": __import__("datetime").date(2026, 8, 20)}
+
+    # 用真实"现在"（ET）：staleness 判断拿 updatedAt（真实时钟）比对 now_et 的日期
+    now_et = datetime.now(ET).replace(hour=17, minute=0)
+
+    run_once(store, FakeLLM(), {"any": "cfg"},
+             now_et=now_et, is_trading_day=lambda n: False,
+             trading_day_resolver=lambda d: d, fetch_calendar=fake_cal)
+    assert calls == ["NVDA"]                       # 第一次：刷新
+    assert store.get_calendar()["events"][0]["type"] == "exDividend"
+
+    run_once(store, FakeLLM(), {"any": "cfg"},
+             now_et=now_et, is_trading_day=lambda n: False,
+             trading_day_resolver=lambda d: d, fetch_calendar=fake_cal)
+    assert calls == ["NVDA"]                       # 当天第二次：不重复刷新

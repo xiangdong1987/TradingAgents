@@ -18,3 +18,6 @@ final watchlistProvider = StreamProvider<List<WatchItem>>((ref) => ref.watch(rep
 final positionsProvider = StreamProvider<List<Position>>((ref) => ref.watch(repoProvider).positions());
 final portfolioMetaProvider =
     StreamProvider<PortfolioMeta>((ref) => ref.watch(repoProvider).portfolioMeta());
+final calendarEventsProvider =
+    StreamProvider<List<CalendarEvent>>((ref) => ref.watch(repoProvider).calendarEvents());
+

@@ -117,6 +117,14 @@ void main() {
     expect(j.finishedAt, DateTime.utc(2026, 8, 1, 10));
   });
 
+
+  test('CalendarEvent parses and labels types in chinese', () {
+    final e = CalendarEvent.fromMap({'ticker': 'NVDA', 'type': 'earnings', 'date': '2026-08-26'});
+    expect(e.typeLabel, '财报');
+    expect(CalendarEvent.fromMap({'ticker': 'X', 'type': 'exDividend', 'date': 'd'}).typeLabel, '除息');
+    expect(CalendarEvent.fromMap({'ticker': 'X', 'type': 'dividendPay', 'date': 'd'}).typeLabel, '派息');
+  });
+
   test('WatchItem and PortfolioMeta parse with defaults', () {
     final w = WatchItem.fromDoc('NVDA', {'ticker': 'NVDA', 'deepFreq': 'weekly'});
     expect(w.note, '');

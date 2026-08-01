@@ -25,7 +25,7 @@ ZOMBIE_AFTER_HOURS = 2
 
 def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
              graph_factory=None, fetch_quote=None, fetch_news=None,
-             trading_day_resolver=None) -> int:
+             trading_day_resolver=None, fetch_calendar=None) -> int:
     """One wake-up: zombie cleanup -> user jobs -> scheduled jobs -> review.
 
     Each stage is isolated in its own try/except; a stage failure is logged
@@ -37,6 +37,7 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     from assistant.daily_brief import generate_daily_brief, top_up_quotes
     from assistant.deep_analysis import run_deep_analysis
     from assistant.advisor import generate_suggestion
+    from assistant.events import refresh_calendar
 
     if now_et is None:
         now_et = datetime.now(ZoneInfo("America/New_York"))
@@ -76,10 +77,14 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
                              ticker, analysis_id)
         return analysis_id, decision
 
+    def _calendar_kwargs():
+        return {} if fetch_calendar is None else {"fetch_calendar": fetch_calendar}
+
     def refresh_fn(today: str) -> None:
         kwargs = {} if fetch_quote is None else {"fetch_quote": fetch_quote}
         refreshed = top_up_quotes(store, today, force=True, **kwargs)
         logger.info("force-refreshed quotes for %d ticker(s)", refreshed)
+        refresh_calendar(store, **_calendar_kwargs())
 
     # 1. zombie cleanup
     try:
@@ -116,6 +121,15 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
             logger.info("topped up quotes for %d ticker(s)", topped)
     except Exception:
         logger.exception("quotes top-up stage failed")
+
+    # 3.6 calendar refresh: once per day — earnings/dividend agenda for the app
+    try:
+        cal = store.get_calendar()
+        if cal is None or cal.get("updatedAt", "")[:10] != now_et.strftime("%Y-%m-%d"):
+            n = refresh_calendar(store, **_calendar_kwargs())
+            logger.info("calendar refreshed: %d event(s)", n)
+    except Exception:
+        logger.exception("calendar refresh stage failed")
 
     # 4. review
     reviewed = 0

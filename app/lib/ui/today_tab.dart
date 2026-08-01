@@ -27,6 +27,7 @@ class TodayTab extends ConsumerWidget {
     return ListView(
       children: [
         _OverviewBar(summary: summary),
+        _AgendaCard(events: ref.watch(calendarEventsProvider).value ?? const []),
         for (final job in jobs.value ?? const <Job>[])
           MaterialBanner(
             content: Text(switch (job.type) {
@@ -235,6 +236,57 @@ class _AcceptDialogState extends State<_AcceptDialog> {
         FilledButton(key: const Key('acceptWithTrade'),
             onPressed: () => _accept(withTrade: true), child: const Text('记录成交并采纳')),
       ],
+    );
+  }
+}
+
+/// 近期财报/分红日程（数据来自 meta/calendar，runner 每日刷新）。
+class _AgendaCard extends StatelessWidget {
+  const _AgendaCard({required this.events});
+  final List<CalendarEvent> events;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final upcoming =
+        events.where((e) => e.date.compareTo(today) >= 0).take(8).toList();
+    if (upcoming.isEmpty) return const SizedBox.shrink();
+    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.calendar_month, size: 16, color: grey),
+              const SizedBox(width: 6),
+              Text('近期日程', style: TextStyle(fontSize: 12, color: grey)),
+            ]),
+            const SizedBox(height: 6),
+            for (final e in upcoming)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(children: [
+                  SizedBox(
+                    width: 52,
+                    child: Text('${e.date.substring(5, 7)}/${e.date.substring(8, 10)}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: [FontFeature.tabularFigures()])),
+                  ),
+                  Expanded(
+                    child: Text(e.ticker,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                  Text(e.typeLabel, style: TextStyle(fontSize: 12, color: grey)),
+                ]),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

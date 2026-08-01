@@ -180,3 +180,20 @@ class Job {
         finishedAt: _tOrNull(d['finishedAt']),
       );
 }
+
+class CalendarEvent {
+  const CalendarEvent({required this.ticker, required this.type, required this.date});
+  final String ticker;
+  final String type; // earnings | exDividend | dividendPay
+  final String date; // YYYY-MM-DD
+
+  String get typeLabel => switch (type) {
+        'earnings' => '财报',
+        'exDividend' => '除息',
+        'dividendPay' => '派息',
+        _ => type,
+      };
+
+  factory CalendarEvent.fromMap(Map<String, dynamic> d) => CalendarEvent(
+      ticker: _s(d['ticker']), type: _s(d['type']), date: _s(d['date']));
+}

@@ -47,4 +47,22 @@ void main() {
     expect(find.textContaining('NVDA'), findsWidgets);
     expect(find.textContaining('分析中'), findsOneWidget);
   });
+
+  testWidgets('agenda card shows upcoming events and hides past', (tester) async {
+    final db = FakeFirebaseFirestore();
+    final future = DateTime.now().add(const Duration(days: 10)).toIso8601String().substring(0, 10);
+    await db.collection('meta').doc('calendar').set({
+      'updatedAt': '2026-08-01T00:00:00+00:00',
+      'events': [
+        {'ticker': 'NVDA', 'type': 'earnings', 'date': future},
+        {'ticker': 'OLD', 'type': 'exDividend', 'date': '2000-01-01'},   // 过期不显示
+      ],
+    });
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.text('近期日程'), findsOneWidget);
+    expect(find.text('NVDA'), findsOneWidget);
+    expect(find.text('财报'), findsOneWidget);
+    expect(find.text('OLD'), findsNothing);
+  });
 }

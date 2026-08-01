@@ -124,6 +124,17 @@ class WealthRepo {
   Future<void> setDeepFreq(String ticker, String deepFreq) =>
       _db.collection('watchlist').doc(ticker).update({'deepFreq': deepFreq});
 
+
+  /// meta/calendar 里的财报/分红日程（runner 每日刷新）。
+  Stream<List<CalendarEvent>> calendarEvents() => _db
+      .collection('meta')
+      .doc('calendar')
+      .snapshots()
+      .map((s) => [
+            for (final e in (s.data()?['events'] as List? ?? const []))
+              CalendarEvent.fromMap(Map<String, dynamic>.from(e as Map)),
+          ]);
+
   /// 请求 runner 强制刷新全部行情（写一条 refresh_quotes job）。
   Future<String> enqueueQuotesRefresh() async {
     final ref = await _db.collection('jobs').add({

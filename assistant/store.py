@@ -23,6 +23,8 @@ class Store(Protocol):
     def get_brief(self, date_str: str) -> dict | None: ...
     def save_brief(self, date_str: str, data: dict) -> None: ...
     def merge_brief_quotes(self, date_str: str, quotes: dict) -> None: ...
+    def get_calendar(self) -> dict | None: ...
+    def save_calendar(self, data: dict) -> None: ...
     def save_analysis(self, data: dict) -> str: ...
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool: ...
     def save_suggestion(self, data: dict) -> str: ...
@@ -83,6 +85,12 @@ class MemoryStore:
         if doc is None:
             return
         doc.setdefault("quotes", {}).update(quotes)
+
+    def get_calendar(self) -> dict | None:
+        return dict(self._calendar) if getattr(self, "_calendar", None) else None
+
+    def save_calendar(self, data: dict) -> None:
+        self._calendar = dict(data)
 
     # --- analyses ---
     def save_analysis(self, data: dict) -> str:
@@ -197,6 +205,13 @@ class FirestoreStore:
         self._db.collection("briefs").document(date_str).set(
             {"quotes": quotes}, merge=True
         )
+
+    def get_calendar(self) -> dict | None:
+        snap = self._db.collection("meta").document("calendar").get()
+        return snap.to_dict() if snap.exists else None
+
+    def save_calendar(self, data: dict) -> None:
+        self._db.collection("meta").document("calendar").set(data)
 
     # --- analyses ---
     def save_analysis(self, data: dict) -> str:
