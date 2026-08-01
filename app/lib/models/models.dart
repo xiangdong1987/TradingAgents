@@ -121,7 +121,7 @@ class Suggestion {
   const Suggestion({required this.id, required this.ticker, required this.action,
       required this.targetWeightPct, required this.rationale, required this.analysisId,
       required this.status, required this.createdAt, required this.outcomePct,
-      required this.resolvedAt, required this.reviewedAt});
+      required this.resolvedAt, required this.reviewedAt, this.source = ''});
   final String id;
   final String ticker;
   final String action; // buy|add|trim|sell|hold
@@ -133,8 +133,16 @@ class Suggestion {
   final double? outcomePct;
   final DateTime? resolvedAt;
   final DateTime? reviewedAt;
+  final String source; // '' = 深度分析引擎；策略名（如 turtle）= 规则策略产出
 
   bool get isPending => status == 'pending';
+
+  /// 策略来源的展示名；空串（引擎建议）返回 null 表示不显示 chip。
+  String? get sourceLabel => switch (source) {
+        '' => null,
+        'turtle' => '🐢 海龟',
+        _ => source,
+      };
 
   factory Suggestion.fromDoc(String id, Map<String, dynamic> d) => Suggestion(
         id: id,
@@ -148,6 +156,7 @@ class Suggestion {
         outcomePct: _dOrNull(d['outcomePct']),
         resolvedAt: _tOrNull(d['resolvedAt']),
         reviewedAt: _tOrNull(d['reviewedAt']),
+        source: _s(d['source']),
       );
 }
 

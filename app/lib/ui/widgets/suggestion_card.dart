@@ -18,8 +18,24 @@ class SuggestionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${s.ticker} · ${s.action.toUpperCase()}',
-                style: Theme.of(context).textTheme.titleMedium),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('${s.ticker} · ${s.action.toUpperCase()}',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
+                if (s.sourceLabel != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                    child: Text(s.sourceLabel!, style: const TextStyle(fontSize: 12)),
+                  ),
+              ],
+            ),
             if (s.targetWeightPct != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),

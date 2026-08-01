@@ -65,4 +65,24 @@ void main() {
     expect(trade['suggestionId'], id);
     expect((await db.collection('suggestions').doc(id).get()).data()!['status'], 'accepted');
   });
+
+  testWidgets('turtle suggestion shows source chip, engine one does not',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    await _seedPending(db);
+    await _seedTurtle(db);
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.text('🐢 海龟'), findsOneWidget); // 引擎建议(NVDA)无 chip
+    expect(find.textContaining('海龟入场'), findsOneWidget);
+  });
+}
+
+Future<void> _seedTurtle(FakeFirebaseFirestore db) async {
+  await db.collection('suggestions').add({
+    'ticker': 'ENEL.MI', 'action': 'buy', 'targetWeightPct': null,
+    'rationale': '海龟入场（S1）：收盘 9.98 突破 20 日高点 9.95。',
+    'analysisId': '', 'source': 'turtle', 'meta': {'system': 's1'},
+    'status': 'pending', 'createdAt': '2026-08-01T01:00:00+00:00',
+  });
 }
