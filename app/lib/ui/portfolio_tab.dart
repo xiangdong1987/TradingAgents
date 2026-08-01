@@ -110,7 +110,10 @@ class PortfolioTab extends ConsumerWidget {
   }
 
   Widget _positionTrailing(Position p, TickerQuote? q) {
-    if (q == null) return const Text('现价 —');
+    if (q == null) {
+      // 无行情源的 ISIN 资产（存单/未上市品种）按成本计入总值
+      return Text(isIsin(p.ticker) ? '按成本计' : '现价 —');
+    }
     final pnl = (q.close - p.avgCost) / p.avgCost * 100;
     return PriceWithPill(
         price: q.close, pct: pnl, prefix: currencyPrefix(p.ticker));

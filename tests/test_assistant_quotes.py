@@ -55,3 +55,15 @@ def test_isin_quotes_use_borsa_italiana():
 
     with pytest.raises(QuoteUnavailable):
         _parse_borsa_price("<html>nothing here</html>")
+
+
+def test_isin_falls_back_to_yfinance_when_borsa_has_no_price():
+    """非债券 ISIN（如基金 NAV）：Borsa 页无价时兜底走 yfinance 历史。"""
+    from assistant.quotes import get_quote
+
+    rows = [("2026-07-30", 8.70), ("2026-07-31", 8.71)]
+    q = get_quote("IT0003110886",
+                  _history=fake_history(rows),
+                  _fetch_html=lambda isin: "<html>404 not found</html>")
+    assert q["close"] == 8.71
+    assert q["pctChange"] == round((8.71 - 8.70) / 8.70 * 100, 2)

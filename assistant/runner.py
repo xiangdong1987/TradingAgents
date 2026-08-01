@@ -143,9 +143,21 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     return 0
 
 
-def main() -> int:
+def _parse_args(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="assistant.runner")
+    parser.add_argument(
+        "--watch", nargs="?", const=120, type=int, default=None, metavar="SECONDS",
+        help="常驻拉任务模式：每 N 秒醒一次消费队列（默认 120），Ctrl-C 退出",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    args = _parse_args(argv)
     # Heavy/real deps are imported here, not at module top (keeps tests light).
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.llm_clients.factory import create_llm_client
@@ -158,7 +170,18 @@ def main() -> int:
         config["llm_provider"], config["quick_think_llm"], config.get("backend_url")
     ).get_llm()
 
-    return run_once(store, llm, config)
+    if args.watch is None:
+        return run_once(store, llm, config)
+
+    import time
+
+    logger.info("watch mode: pulling jobs every %d s (Ctrl-C to stop)", args.watch)
+    while True:
+        try:
+            run_once(store, llm, config)
+        except Exception:
+            logger.exception("wake-up crashed; watch loop continues")
+        time.sleep(args.watch)
 
 
 if __name__ == "__main__":

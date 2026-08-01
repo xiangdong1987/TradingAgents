@@ -29,8 +29,13 @@ def _yf_history(ticker: str, start: str, end: str) -> list[tuple[str, float]]:
 
 def get_quote(ticker: str, _history=_yf_history, _fetch_html=None) -> dict:
     if is_isin(ticker):
-        kwargs = {} if _fetch_html is None else {"_fetch_html": _fetch_html}
-        return _borsa_bond_quote(ticker, **kwargs)
+        # 债券走 Borsa Italiana；不是债券的 ISIN（如银行基金 NAV）Yahoo 常有裸
+        # ISIN 报价，作为兜底继续走下面的 yfinance 路径。
+        try:
+            kwargs = {} if _fetch_html is None else {"_fetch_html": _fetch_html}
+            return _borsa_bond_quote(ticker, **kwargs)
+        except Exception:
+            pass
     end = datetime.utcnow().strftime("%Y-%m-%d")
     start = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
     rows = _history(ticker, start, end)

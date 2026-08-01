@@ -182,3 +182,11 @@ def test_calendar_refreshes_once_per_day():
              now_et=now_et, is_trading_day=lambda n: False,
              trading_day_resolver=lambda d: d, fetch_calendar=fake_cal)
     assert calls == ["NVDA"]                       # 当天第二次：不重复刷新
+
+
+def test_watch_flag_parsing():
+    from assistant.runner import _parse_args
+
+    assert _parse_args([]).watch is None
+    assert _parse_args(["--watch"]).watch == 120
+    assert _parse_args(["--watch", "30"]).watch == 30
