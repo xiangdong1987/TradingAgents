@@ -67,3 +67,18 @@ def test_isin_falls_back_to_yfinance_when_borsa_has_no_price():
                   _fetch_html=lambda isin: "<html>404 not found</html>")
     assert q["close"] == 8.71
     assert q["pctChange"] == round((8.71 - 8.70) / 8.70 * 100, 2)
+
+
+def test_mapped_fund_isin_uses_borsa_fund_nav():
+    from assistant.quotes import get_quote, _parse_borsa_fund_nav
+
+    fixture = ('<h1>Bancoposta Obbligazionario</h1> <strong> 8,328 </strong>'
+               '<span>Variazione</span> <td> 8,328 </td> <td> 8,322 </td>')
+    assert _parse_borsa_fund_nav(fixture) == (8.328, 8.322)
+
+    q = get_quote("IT0003110886", _fetch_html=lambda code: fixture)
+    assert q["close"] == 8.328 and q["prevClose"] == 8.322
+    assert q["pctChange"] == 0.07
+
+    with pytest.raises(QuoteUnavailable):
+        _parse_borsa_fund_nav("<html>niente</html>")

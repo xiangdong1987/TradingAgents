@@ -29,10 +29,12 @@ def _yf_history(ticker: str, start: str, end: str) -> list[tuple[str, float]]:
 
 def get_quote(ticker: str, _history=_yf_history, _fetch_html=None) -> dict:
     if is_isin(ticker):
-        # 债券走 Borsa Italiana；不是债券的 ISIN（如银行基金 NAV）Yahoo 常有裸
-        # ISIN 报价，作为兜底继续走下面的 yfinance 路径。
+        kwargs = {} if _fetch_html is None else {"_fetch_html": _fetch_html}
+        # 1) 已映射的基金 → Borsa 基金页官方 NAV（Yahoo 法兰克福源会漂）
+        if ticker in _BORSA_FUND_CODES:
+            return _borsa_fund_quote(ticker, **kwargs)
+        # 2) 债券 → Borsa BTP 页；3) 都不是 → 兜底 yfinance 裸 ISIN
         try:
-            kwargs = {} if _fetch_html is None else {"_fetch_html": _fetch_html}
             return _borsa_bond_quote(ticker, **kwargs)
         except Exception:
             pass
@@ -119,3 +121,41 @@ def _borsa_bond_quote(isin: str, _fetch_html=_fetch_borsa_html) -> dict:
     price = _parse_borsa_price(_fetch_html(isin))
     # 页面无前收盘，涨跌幅暂记 0；持仓盈亏按成本价计算，不受影响。
     return {"ticker": isin, "close": price, "prevClose": price, "pctChange": 0.0}
+
+
+# --- Borsa Italiana funds (fondi comuni) ------------------------------------
+# Fund NAVs on Yahoo (Frankfurt feed) can diverge badly from the official
+# Italian NAV (seen: 8.71 vs 8.328). Borsa's fondi detail page is authoritative
+# but is keyed by an internal code, not ISIN — map maintained by hand: 用户给
+# 出 dettaglio 链接即可添加。
+_BORSA_FUND_CODES = {
+    "IT0003110886": "1BAPOOE",  # BancoPosta Obbligazionario Euro Medio-Lungo T.
+}
+
+
+def _fetch_borsa_fund_html(code: str) -> str:
+    import requests
+
+    url = f"https://www.borsaitaliana.it/borsa/fondi/dettaglio/{code}.html"
+    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+    resp.raise_for_status()
+    return resp.text
+
+
+def _parse_borsa_fund_nav(html: str) -> tuple[float, float]:
+    """(close, prev) from the fund header: 第一组意大利数字是最新 NAV，
+    随后 Variazione 区块给出最新/前值。"""
+    flat = re.sub(r"\s+", " ", html)
+    nums = [_parse_it_number(m.group(1))
+            for m in re.finditer(r">\s*([0-9]{1,2},[0-9]{2,5})\s*<", flat)][:4]
+    if not nums:
+        raise QuoteUnavailable("no NAV found on Borsa fund page")
+    close = nums[0]
+    prev = next((n for n in nums[1:] if n != close), close)
+    return close, prev
+
+
+def _borsa_fund_quote(isin: str, _fetch_html=_fetch_borsa_fund_html) -> dict:
+    close, prev = _parse_borsa_fund_nav(_fetch_html(_BORSA_FUND_CODES[isin]))
+    pct = 0.0 if not prev else round((close - prev) / prev * 100, 2)
+    return {"ticker": isin, "close": close, "prevClose": prev, "pctChange": pct}
