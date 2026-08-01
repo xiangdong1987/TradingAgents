@@ -6,6 +6,7 @@ import '../logic/portfolio_math.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'widgets/pnl.dart';
+import 'widgets/ticker_field.dart';
 
 class PortfolioTab extends ConsumerWidget {
   const PortfolioTab({super.key});
@@ -252,12 +253,7 @@ class _PositionDialogState extends State<_PositionDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (isNew)
-            TextField(
-              key: const Key('posTicker'),
-              controller: _ticker,
-              decoration: const InputDecoration(labelText: 'Ticker'),
-              textCapitalization: TextCapitalization.characters,
-            ),
+            TickerField(fieldKey: const Key('posTicker'), controller: _ticker),
           TextField(
             key: const Key('posShares'),
             controller: _shares,

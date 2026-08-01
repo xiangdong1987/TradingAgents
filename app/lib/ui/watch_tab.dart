@@ -6,6 +6,7 @@ import '../providers.dart';
 import 'history_tab.dart';
 import 'widgets/pnl.dart';
 import 'widgets/stream_error.dart';
+import 'widgets/ticker_field.dart';
 
 class WatchTab extends ConsumerWidget {
   const WatchTab({super.key});
@@ -127,9 +128,8 @@ class _AddWatchDialogState extends State<_AddWatchDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TextField(key: const Key('watchTicker'), controller: _ticker,
-              decoration: const InputDecoration(labelText: '代码（如 NVDA）'),
-              textCapitalization: TextCapitalization.characters),
+          TickerField(fieldKey: const Key('watchTicker'), controller: _ticker,
+              onSubmitted: _submit),
           const SizedBox(height: 8),
           SegmentedButton<String>(
             segments: const [
