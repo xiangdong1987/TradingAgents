@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:table_calendar/table_calendar.dart';
 // Markdown 渲染 import 按 Task 1 选定的包调整：
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
@@ -28,7 +29,6 @@ class TodayTab extends ConsumerWidget {
       children: [
         _OverviewBar(summary: summary),
         _AgendaCard(events: ref.watch(calendarEventsProvider).value ?? const []),
-        _AskCard(ref: ref, chats: ref.watch(chatsProvider).value ?? const []),
         for (final job in jobs.value ?? const <Job>[])
           MaterialBanner(
             content: Text(switch (job.type) {
@@ -241,43 +241,74 @@ class _AcceptDialogState extends State<_AcceptDialog> {
   }
 }
 
-/// 近期财报/分红日程（数据来自 meta/calendar，runner 每日刷新）。
-class _AgendaCard extends StatelessWidget {
+/// 财报/分红月历（真实日历组件）：有事件的日期打点，点选看当日明细。
+class _AgendaCard extends StatefulWidget {
   const _AgendaCard({required this.events});
   final List<CalendarEvent> events;
 
   @override
+  State<_AgendaCard> createState() => _AgendaCardState();
+}
+
+class _AgendaCardState extends State<_AgendaCard> {
+  DateTime _focused = DateTime.now();
+  DateTime _selected = DateTime.now();
+
+  List<CalendarEvent> _eventsOn(DateTime day) {
+    final key = day.toIso8601String().substring(0, 10);
+    return [for (final e in widget.events) if (e.date == key) e];
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-    final upcoming =
-        events.where((e) => e.date.compareTo(today) >= 0).take(8).toList();
-    if (upcoming.isEmpty) return const SizedBox.shrink();
+    if (widget.events.isEmpty) return const SizedBox.shrink();
     final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+    final selectedEvents = _eventsOn(_selected);
+    const dow = ['一', '二', '三', '四', '五', '六', '日'];
 
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              Icon(Icons.calendar_month, size: 16, color: grey),
-              const SizedBox(width: 6),
-              Text('近期日程', style: TextStyle(fontSize: 12, color: grey)),
-            ]),
-            const SizedBox(height: 6),
-            for (final e in upcoming)
+            TableCalendar<CalendarEvent>(
+              locale: null,
+              firstDay: DateTime.now().subtract(const Duration(days: 180)),
+              lastDay: DateTime.now().add(const Duration(days: 365)),
+              focusedDay: _focused,
+              selectedDayPredicate: (d) => isSameDay(d, _selected),
+              onDaySelected: (sel, foc) =>
+                  setState(() { _selected = sel; _focused = foc; }),
+              eventLoader: _eventsOn,
+              startingDayOfWeek: StartingDayOfWeek.monday,
+              availableCalendarFormats: const {CalendarFormat.month: '月'},
+              headerStyle: const HeaderStyle(
+                  formatButtonVisible: false, titleCentered: true),
+              daysOfWeekHeight: 22,
+              calendarBuilders: CalendarBuilders(
+                dowBuilder: (context, day) => Center(
+                  child: Text(dow[day.weekday - 1],
+                      style: TextStyle(fontSize: 11, color: grey)),
+                ),
+              ),
+              calendarStyle: CalendarStyle(
+                outsideDaysVisible: false,
+                todayDecoration: BoxDecoration(
+                    color: pnlColor(1).withValues(alpha: 0.25),
+                    shape: BoxShape.circle),
+                selectedDecoration: BoxDecoration(
+                    color: pnlColor(1), shape: BoxShape.circle),
+                markerDecoration: BoxDecoration(
+                    color: pnlColor(1), shape: BoxShape.circle),
+                markersMaxCount: 3,
+              ),
+            ),
+            if (selectedEvents.isNotEmpty) const Divider(height: 8),
+            for (final e in selectedEvents)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
+                padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
                 child: Row(children: [
-                  SizedBox(
-                    width: 52,
-                    child: Text('${e.date.substring(5, 7)}/${e.date.substring(8, 10)}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: [FontFeature.tabularFigures()])),
-                  ),
                   Expanded(
                     child: Text(e.ticker,
                         style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -285,88 +316,6 @@ class _AgendaCard extends StatelessWidget {
                   Text(e.typeLabel, style: TextStyle(fontSize: 12, color: grey)),
                 ]),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 「问一问」：结合当前持仓向 LLM 提问（经 chat job 队列，watch 模式下约 2 分钟内回答）。
-class _AskCard extends StatefulWidget {
-  const _AskCard({required this.ref, required this.chats});
-  final WidgetRef ref;
-  final List<ChatMessage> chats;
-
-  @override
-  State<_AskCard> createState() => _AskCardState();
-}
-
-class _AskCardState extends State<_AskCard> {
-  final _q = TextEditingController();
-  bool _sending = false;
-
-  @override
-  void dispose() {
-    _q.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    final text = _q.text.trim();
-    if (text.isEmpty || _sending) return;
-    setState(() => _sending = true);
-    try {
-      await widget.ref.read(repoProvider).askQuestion(text);
-      _q.clear();
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
-    final recent = widget.chats.take(3).toList();
-    return Card(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.chat_bubble_outline, size: 16, color: grey),
-              const SizedBox(width: 6),
-              Text('问一问（结合当前持仓回答）', style: TextStyle(fontSize: 12, color: grey)),
-            ]),
-            Row(children: [
-              Expanded(
-                child: TextField(
-                  key: const Key('askField'),
-                  controller: _q,
-                  decoration: const InputDecoration(
-                      hintText: '例：可口可乐和 Intesa 哪个更适合买入？'),
-                  onSubmitted: (_) => _send(),
-                ),
-              ),
-              IconButton(
-                key: const Key('askSend'),
-                icon: const Icon(Icons.send),
-                onPressed: _sending ? null : _send,
-              ),
-            ]),
-            for (final c in recent) ...[
-              const SizedBox(height: 8),
-              Text('问：${c.question}',
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              switch (c.status) {
-                'answered' => MarkdownBody(data: c.answer ?? ''),
-                'failed' => Text('回答失败，请重试', style: TextStyle(color: pnlColor(-1))),
-                _ => Text('分析中…', style: TextStyle(color: grey)),
-              },
-            ],
           ],
         ),
       ),

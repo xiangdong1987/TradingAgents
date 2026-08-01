@@ -2,6 +2,8 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:table_calendar/table_calendar.dart';
+import 'package:wealth_assistant/models/models.dart';
 import 'package:wealth_assistant/providers.dart';
 import 'package:wealth_assistant/ui/today_tab.dart';
 
@@ -48,50 +50,19 @@ void main() {
     expect(find.textContaining('分析中'), findsOneWidget);
   });
 
-  testWidgets('agenda card shows upcoming events and hides past', (tester) async {
+  testWidgets('calendar card marks event day and shows detail on select', (tester) async {
     final db = FakeFirebaseFirestore();
-    final future = DateTime.now().add(const Duration(days: 10)).toIso8601String().substring(0, 10);
+    final today = DateTime.now().toIso8601String().substring(0, 10);
     await db.collection('meta').doc('calendar').set({
       'updatedAt': '2026-08-01T00:00:00+00:00',
       'events': [
-        {'ticker': 'NVDA', 'type': 'earnings', 'date': future},
-        {'ticker': 'OLD', 'type': 'exDividend', 'date': '2000-01-01'},   // 过期不显示
+        {'ticker': 'NVDA', 'type': 'earnings', 'date': today},   // 今天有事件（默认选中）
       ],
     });
     await tester.pumpWidget(_wrap(db));
     await tester.pumpAndSettle();
-    expect(find.text('近期日程'), findsOneWidget);
-    expect(find.text('NVDA'), findsOneWidget);
+    expect(find.byType(TableCalendar<CalendarEvent>), findsOneWidget);
+    expect(find.text('NVDA'), findsOneWidget);   // 选中日明细
     expect(find.text('财报'), findsOneWidget);
-    expect(find.text('OLD'), findsNothing);
-  });
-
-  testWidgets('ask card sends question: chat doc + chat job created', (tester) async {
-    final db = FakeFirebaseFirestore();
-    await tester.pumpWidget(_wrap(db));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('askField')), 'KO 和 ISP.MI 买哪个？');
-    await tester.tap(find.byKey(const Key('askSend')));
-    await tester.pumpAndSettle();
-    final chat = (await db.collection('chats').get()).docs.single;
-    expect(chat.data()['question'], 'KO 和 ISP.MI 买哪个？');
-    expect(chat.data()['status'], 'pending');
-    final job = (await db.collection('jobs').get()).docs.single.data();
-    expect(job['type'], 'chat');
-    expect(job['chatId'], chat.id);
-    expect(find.text('问：KO 和 ISP.MI 买哪个？'), findsOneWidget);   // 实时回显
-    expect(find.text('分析中…'), findsOneWidget);
-  });
-
-  testWidgets('answered chat renders markdown answer', (tester) async {
-    final db = FakeFirebaseFirestore();
-    await db.collection('chats').add({
-      'question': '现金太多吗', 'answer': '**结论**：可以加仓', 'status': 'answered',
-      'createdAt': '2026-08-01T00:00:00+00:00',
-    });
-    await tester.pumpWidget(_wrap(db));
-    await tester.pumpAndSettle();
-    expect(find.text('问：现金太多吗'), findsOneWidget);
-    expect(find.textContaining('可以加仓'), findsOneWidget);
   });
 }

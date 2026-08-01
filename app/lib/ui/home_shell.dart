@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
+import 'chat_page.dart';
 import 'history_tab.dart';
 import 'portfolio_tab.dart';
 import 'today_tab.dart';
@@ -21,6 +22,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     TodayTab(),
     WatchTab(),
     PortfolioTab(),
+    ChatPage(),
     HistoryTab(),
   ];
 
@@ -57,6 +59,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           NavigationDestination(icon: Icon(Icons.today), label: '今日'),
           NavigationDestination(icon: Icon(Icons.star_outline), label: '自选'),
           NavigationDestination(icon: Icon(Icons.pie_chart_outline), label: '持仓'),
+          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: '问答'),
           NavigationDestination(icon: Icon(Icons.history), label: '历史'),
         ],
       ),
