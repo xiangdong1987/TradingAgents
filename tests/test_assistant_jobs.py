@@ -43,3 +43,25 @@ def test_unknown_job_type_marked_failed():
 def test_runner_module_imports():
     import assistant.runner  # 装配层可导入即可（真实执行需要 Firestore 凭证）
     assert callable(assistant.runner.main)
+
+
+def test_daily_brief_job_uses_stamped_date_not_utc_now():
+    s = MemoryStore()
+    job = queued(s, date="2026-07-31")
+    seen = {}
+    execute_job(s, job, brief_fn=lambda today: seen.setdefault("today", today), deep_fn=None)
+    assert seen["today"] == "2026-07-31"
+
+
+def test_deep_analysis_job_uses_stamped_date_not_utc_now():
+    s = MemoryStore()
+    job = queued(s, type="deep_analysis", ticker="NVDA", date="2026-07-31")
+    seen = {}
+
+    def deep_fn(ticker, today):
+        seen["ticker"] = ticker
+        seen["today"] = today
+        return "analysis1", "BUY"
+
+    execute_job(s, job, brief_fn=None, deep_fn=deep_fn)
+    assert seen == {"ticker": "NVDA", "today": "2026-07-31"}

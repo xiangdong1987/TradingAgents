@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from assistant.store import utc_now_iso
 
@@ -12,7 +13,9 @@ logger = logging.getLogger(__name__)
 def execute_job(store, job: dict, *, brief_fn, deep_fn) -> None:
     jid = job["id"]
     try:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = job.get("date")
+        if today is None:
+            today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
         if job["type"] == "daily_brief":
             brief_fn(today)
             store.update_job(jid, {"status": "done", "finishedAt": utc_now_iso()})

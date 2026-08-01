@@ -26,6 +26,7 @@ def plan_scheduled_jobs(store, now_et: datetime, *, is_trading_day) -> list[str]
     if store.get_brief(today) is None:
         created.append(store.add_job({
             "type": "daily_brief",
+            "date": today,
             "status": "queued",
             "requestedBy": "schedule",
             "createdAt": utc_now_iso(),
@@ -41,6 +42,7 @@ def plan_scheduled_jobs(store, now_et: datetime, *, is_trading_day) -> list[str]
             created.append(store.add_job({
                 "type": "deep_analysis",
                 "ticker": item["ticker"],
+                "date": today,
                 "status": "queued",
                 "requestedBy": "schedule",
                 "createdAt": utc_now_iso(),

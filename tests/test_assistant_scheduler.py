@@ -55,3 +55,15 @@ def test_non_friday_does_not_schedule_deep_analysis():
     s = store_with_watchlist()
     s.save_brief("2026-07-29", {"date": "2026-07-29"})
     assert plan_scheduled_jobs(s, WED_EVENING, is_trading_day=lambda n: True) == []
+
+
+def test_friday_late_wakeup_schedules_both_brief_and_deep_with_et_date():
+    # 21:00 ET on a Friday, well after ET midnight has already ticked over to UTC
+    # "tomorrow" for part of the evening — job docs must carry the ET date, not
+    # whatever datetime.now(timezone.utc) would compute.
+    s = store_with_watchlist()
+    fri_late = datetime(2026, 7, 31, 21, 0, tzinfo=ET)
+    ids = plan_scheduled_jobs(s, fri_late, is_trading_day=lambda n: True)
+    jobs = [s.get_job(i) for i in ids]
+    assert sorted(j["type"] for j in jobs) == ["daily_brief", "deep_analysis"]
+    assert all(j["date"] == "2026-07-31" for j in jobs)
