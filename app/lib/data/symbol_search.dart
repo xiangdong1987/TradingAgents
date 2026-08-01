@@ -131,6 +131,10 @@ const List<SymbolEntry> milanEntries = [
   SymbolEntry(symbol: 'EM13.MI', name: 'iShares Euro Govt Bond 1-3yr UCITS ETF', alias: '欧元区短债 1-3年'),
   SymbolEntry(symbol: 'X13E.MI', name: 'Xtrackers II Eurozone Gov Bond 1-3 UCITS ETF', alias: '欧元区短债 1-3年'),
   SymbolEntry(symbol: 'IBGL.MI', name: 'iShares Euro Govt Bond 15-30yr UCITS ETF', alias: '欧元区长债 15-30年'),
+  SymbolEntry(symbol: 'IBGX.MI', name: 'iShares Euro Govt Bond 3-5yr UCITS ETF', alias: '欧元区国债 3-5年'),
+  SymbolEntry(symbol: 'IBGY.MI', name: 'iShares Euro Govt Bond 5-7yr UCITS ETF', alias: '欧元区国债 5-7年 6年'),
+  SymbolEntry(symbol: 'X57E.MI', name: 'Xtrackers II Eurozone Gov Bond 5-7 UCITS ETF', alias: '欧元区国债 5-7年 6年'),
+  SymbolEntry(symbol: 'IBGM.MI', name: 'iShares Euro Govt Bond 7-10yr UCITS ETF', alias: '欧元区国债 7-10年'),
 ];
 
 class SymbolIndex {
