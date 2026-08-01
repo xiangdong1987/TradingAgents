@@ -38,6 +38,7 @@ class Store(Protocol):
     def update_job(self, jid: str, fields: dict) -> None: ...
     def fail_zombie_jobs(self, cutoff_iso: str) -> int: ...
     def requeue_running_jobs(self) -> int: ...
+    def save_heartbeat(self, data: dict) -> None: ...
 
 
 class MemoryStore:
@@ -185,6 +186,9 @@ class MemoryStore:
                 n += 1
         return n
 
+    def save_heartbeat(self, data: dict) -> None:
+        self._heartbeat = dict(data)
+
 
 def resolve_credentials_path(env: dict | None = None) -> str:
     env = os.environ if env is None else env
@@ -323,3 +327,6 @@ class FirestoreStore:
             snap.reference.update({"status": "queued"})
             n += 1
         return n
+
+    def save_heartbeat(self, data: dict) -> None:
+        self._db.collection("meta").document("runner").set(data)

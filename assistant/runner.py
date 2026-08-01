@@ -25,7 +25,8 @@ ZOMBIE_AFTER_HOURS = 2
 
 def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
              graph_factory=None, fetch_quote=None, fetch_news=None,
-             trading_day_resolver=None, fetch_calendar=None) -> int:
+             trading_day_resolver=None, fetch_calendar=None,
+             watch_interval=None) -> int:
     """One wake-up: zombie cleanup -> user jobs -> scheduled jobs -> review.
 
     Each stage is isolated in its own try/except; a stage failure is logged
@@ -144,6 +145,14 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     except Exception:
         logger.exception("review stage failed")
 
+    # 心跳：App 首页据此显示 runner 在线/离线
+    try:
+        store.save_heartbeat({"lastSeenAt": datetime.now(timezone.utc).isoformat(),
+                              "mode": "watch" if watch_interval else "once",
+                              "intervalSeconds": watch_interval or 0})
+    except Exception:
+        logger.exception("heartbeat write failed")
+
     return 0
 
 
@@ -190,7 +199,7 @@ def main(argv=None) -> int:
         logger.exception("orphan requeue failed")
     while True:
         try:
-            run_once(store, llm, config)
+            run_once(store, llm, config, watch_interval=args.watch)
         except Exception:
             logger.exception("wake-up crashed; watch loop continues")
         time.sleep(args.watch)

@@ -154,7 +154,7 @@ class Suggestion {
 class Job {
   const Job({required this.id, required this.type, required this.ticker, required this.status,
       required this.requestedBy, required this.error, required this.analysisId, required this.createdAt,
-      required this.finishedAt});
+      required this.finishedAt, this.startedAt});
   final String id;
   final String type; // daily_brief|deep_analysis
   final String? ticker;
@@ -163,6 +163,7 @@ class Job {
   final String? error;
   final String? analysisId;
   final DateTime createdAt;
+  final DateTime? startedAt;
   final DateTime? finishedAt;
 
   bool get isFailed => status == 'failed';
@@ -177,6 +178,7 @@ class Job {
         error: d['error'] as String?,
         analysisId: d['analysisId'] as String?,
         createdAt: _t(d['createdAt']),
+        startedAt: _tOrNull(d['startedAt']),
         finishedAt: _tOrNull(d['finishedAt']),
       );
 }
@@ -213,5 +215,26 @@ class ChatMessage {
       answer: d['answer'] as String?,
       status: _s(d['status'], 'pending'),
       createdAt: _t(d['createdAt']));
+}
+
+class RunnerStatus {
+  const RunnerStatus({required this.lastSeenAt, required this.mode,
+      required this.intervalSeconds});
+  final DateTime? lastSeenAt;
+  final String mode; // watch | once
+  final int intervalSeconds;
+
+  /// 在线判定：最后心跳距今 < max(2×间隔, 5 分钟)。
+  bool aliveAt(DateTime now) {
+    if (lastSeenAt == null) return false;
+    final grace = Duration(
+        seconds: intervalSeconds > 0 ? intervalSeconds * 2 + 60 : 300);
+    return now.toUtc().difference(lastSeenAt!) < grace;
+  }
+
+  factory RunnerStatus.fromMap(Map<String, dynamic>? d) => RunnerStatus(
+      lastSeenAt: _tOrNull(d?['lastSeenAt']),
+      mode: _s(d?['mode'], 'once'),
+      intervalSeconds: (d?['intervalSeconds'] as num?)?.toInt() ?? 0);
 }
 

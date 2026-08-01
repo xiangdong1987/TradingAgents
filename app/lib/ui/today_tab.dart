@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -27,21 +29,11 @@ class TodayTab extends ConsumerWidget {
 
     return ListView(
       children: [
-        // 1. 任务状态横幅置顶
-        for (final job in jobs.value ?? const <Job>[])
-          MaterialBanner(
-            content: Text(switch (job.type) {
-              'deep_analysis' =>
-                '${job.ticker} 深度分析中（${job.status == "queued" ? "排队" : "分析中"}）',
-              'refresh_quotes' => '行情刷新中',
-              'chat' => '问答回复生成中',
-              _ => '日报生成中',
-            }),
-            // 用静态图标而非不确定态 CircularProgressIndicator：后者的 ticker 永不停止，
-            // 会导致 job 处于 running 状态时 widget 测试里的 pumpAndSettle 永远等不到静止而超时。
-            leading: const Icon(Icons.sync, size: 20),
-            actions: const [SizedBox.shrink()],
-          ),
+        // 1. 任务与 runner 状态卡置顶
+        _ActiveJobsCard(
+          jobs: jobs.value ?? const <Job>[],
+          runner: ref.watch(runnerStatusProvider).value,
+        ),
         // 2. 概览一条 + 3. 日历为主体
         _OverviewBar(summary: summary),
         _AgendaCard(events: ref.watch(calendarEventsProvider).value ?? const []),
@@ -329,6 +321,114 @@ class _AgendaCardState extends State<_AgendaCard> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 任务与 runner 状态卡：显示 watch 进程在线/离线、每个进行中任务的
+/// 状态与已运行时长；30 秒自刷新时长与在线判定。
+class _ActiveJobsCard extends StatefulWidget {
+  const _ActiveJobsCard({required this.jobs, required this.runner});
+  final List<Job> jobs;
+  final RunnerStatus? runner;
+
+  @override
+  State<_ActiveJobsCard> createState() => _ActiveJobsCardState();
+}
+
+class _ActiveJobsCardState extends State<_ActiveJobsCard> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  String _jobLabel(Job j) => switch (j.type) {
+        'deep_analysis' => '${j.ticker} 深度分析',
+        'refresh_quotes' => '行情刷新',
+        'chat' => '问答回复',
+        _ => '日报生成',
+      };
+
+  String _elapsed(Job j, DateTime now) {
+    final from = j.startedAt ?? j.createdAt;
+    final mins = now.toUtc().difference(from).inMinutes;
+    return mins < 1 ? '刚开始' : '已 $mins 分钟';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+    final runner = widget.runner;
+    final alive = runner?.aliveAt(now) ?? false;
+    final jobs = widget.jobs;
+    if (jobs.isEmpty && runner == null) return const SizedBox.shrink();
+
+    String runnerText;
+    if (alive) {
+      runnerText = 'Runner 在线';
+    } else if (runner?.lastSeenAt != null) {
+      final mins = now.toUtc().difference(runner!.lastSeenAt!).inMinutes;
+      runnerText = 'Runner 离线 · 最后活跃 $mins 分钟前';
+    } else {
+      runnerText = 'Runner 未启动';
+    }
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (jobs.isNotEmpty && alive)
+            const LinearProgressIndicator(minHeight: 2),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: Row(children: [
+              Icon(Icons.circle, size: 9,
+                  color: alive ? pnlColor(1) : pnlColor(-1)),
+              const SizedBox(width: 6),
+              Text(runnerText, style: TextStyle(fontSize: 12, color: grey)),
+              if (!alive && jobs.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('任务将等待 runner 启动',
+                      style: TextStyle(fontSize: 11, color: pnlColor(-1)),
+                      overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ]),
+          ),
+          for (final j in jobs)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+              child: Row(children: [
+                Icon(j.status == 'queued' ? Icons.schedule : Icons.autorenew,
+                    size: 15, color: grey),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_jobLabel(j),
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                ),
+                Text(j.status == 'queued' ? '排队中' : _elapsed(j, now),
+                    style: TextStyle(fontSize: 12, color: grey)),
+              ]),
+            ),
+          const SizedBox(height: 4),
+        ],
       ),
     );
   }

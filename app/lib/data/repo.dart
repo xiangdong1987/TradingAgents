@@ -149,6 +149,14 @@ class WealthRepo {
     return chatRef.id;
   }
 
+
+  /// runner 心跳（meta/runner）：App 据此显示在线/离线。
+  Stream<RunnerStatus> runnerStatus() => _db
+      .collection('meta')
+      .doc('runner')
+      .snapshots()
+      .map((s) => RunnerStatus.fromMap(s.data()));
+
   /// meta/calendar 里的财报/分红日程（runner 每日刷新）。
   Stream<List<CalendarEvent>> calendarEvents() => _db
       .collection('meta')

@@ -190,3 +190,14 @@ def test_watch_flag_parsing():
     assert _parse_args([]).watch is None
     assert _parse_args(["--watch"]).watch == 120
     assert _parse_args(["--watch", "30"]).watch == 30
+
+
+def test_run_once_writes_heartbeat():
+    store = MemoryStore()
+    run_once(store, FakeLLM(), {"any": "cfg"},
+             now_et=WED, is_trading_day=lambda n: False,
+             trading_day_resolver=lambda d: d, fetch_calendar=lambda t: {},
+             watch_interval=120)
+    hb = store._heartbeat
+    assert hb["mode"] == "watch" and hb["intervalSeconds"] == 120
+    assert hb["lastSeenAt"]

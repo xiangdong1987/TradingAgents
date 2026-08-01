@@ -22,4 +22,6 @@ final calendarEventsProvider =
     StreamProvider<List<CalendarEvent>>((ref) => ref.watch(repoProvider).calendarEvents());
 final chatsProvider =
     StreamProvider<List<ChatMessage>>((ref) => ref.watch(repoProvider).chats());
+final runnerStatusProvider =
+    StreamProvider<RunnerStatus>((ref) => ref.watch(repoProvider).runnerStatus());
 
