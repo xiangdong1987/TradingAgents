@@ -5,6 +5,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../models/models.dart';
 import '../providers.dart';
+import 'widgets/stream_error.dart';
 import 'widgets/suggestion_card.dart';
 
 class TodayTab extends ConsumerWidget {
@@ -48,7 +49,7 @@ class TodayTab extends ConsumerWidget {
                 ),
           loading: () => const Padding(
               padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Padding(padding: const EdgeInsets.all(16), child: Text('日报加载失败: $e')),
+          error: (e, _) => StreamError(error: e, onRetry: () => ref.invalidate(latestBriefProvider)),
         ),
         ...switch (suggestions) {
           AsyncData(:final value) when value.isNotEmpty => [

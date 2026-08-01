@@ -1,4 +1,5 @@
 // app/test/models_test.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wealth_assistant/models/models.dart';
 
@@ -104,6 +105,16 @@ void main() {
       'createdAt': '2026-07-31T10:00:00+00:00',
     });
     expect(old.quotes, isEmpty);
+  });
+
+  test('_t and _tOrNull tolerate Firestore Timestamp values', () {
+    final ts = Timestamp.fromDate(DateTime.utc(2026, 8, 1, 10));
+    final j = Job.fromDoc('j', {
+      'type': 'daily_brief', 'status': 'done', 'requestedBy': 'user',
+      'createdAt': ts, 'finishedAt': ts,
+    });
+    expect(j.createdAt, DateTime.utc(2026, 8, 1, 10));
+    expect(j.finishedAt, DateTime.utc(2026, 8, 1, 10));
   });
 
   test('WatchItem and PortfolioMeta parse with defaults', () {

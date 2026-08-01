@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers.dart';
 import 'history_tab.dart';
 import 'portfolio_tab.dart';
 import 'today_tab.dart';
 import 'watch_tab.dart';
 
-class HomeShell extends StatefulWidget {
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
 
   final _tabs = const [
@@ -25,6 +27,16 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('理财助手'),
+        actions: [
+          IconButton(
+            key: const Key('logoutButton'),
+            icon: const Icon(Icons.logout),
+            onPressed: () => ref.read(firebaseAuthProvider).signOut(),
+          ),
+        ],
+      ),
       body: _tabs[_index],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,

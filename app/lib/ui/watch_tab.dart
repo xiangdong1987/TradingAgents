@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'history_tab.dart';
+import 'widgets/stream_error.dart';
 
 class WatchTab extends ConsumerWidget {
   const WatchTab({super.key});
@@ -65,7 +66,7 @@ class WatchTab extends ConsumerWidget {
                 ],
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('自选加载失败: $e')),
+        error: (e, _) => StreamError(error: e, onRetry: () => ref.invalidate(watchlistProvider)),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => showDialog<void>(

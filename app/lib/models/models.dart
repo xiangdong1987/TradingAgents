@@ -3,6 +3,8 @@
 /// All numbers arrive as int OR double from Firestore — parse via _d().
 library;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 double _d(Object? v, [double fallback = 0]) =>
     v == null ? fallback : (v as num).toDouble();
 
@@ -10,10 +12,17 @@ double? _dOrNull(Object? v) => v == null ? null : (v as num).toDouble();
 
 String _s(Object? v, [String fallback = '']) => (v as String?) ?? fallback;
 
-DateTime _t(Object? v) =>
-    v == null ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true) : DateTime.parse(v as String).toUtc();
+DateTime _t(Object? v) {
+  if (v == null) return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  if (v is Timestamp) return v.toDate().toUtc();
+  return DateTime.parse(v as String).toUtc();
+}
 
-DateTime? _tOrNull(Object? v) => v == null ? null : DateTime.parse(v as String).toUtc();
+DateTime? _tOrNull(Object? v) {
+  if (v == null) return null;
+  if (v is Timestamp) return v.toDate().toUtc();
+  return DateTime.parse(v as String).toUtc();
+}
 
 class WatchItem {
   const WatchItem({required this.ticker, required this.note, required this.deepFreq, required this.addedAt});
