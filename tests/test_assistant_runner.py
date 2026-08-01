@@ -201,3 +201,18 @@ def test_run_once_writes_heartbeat():
     hb = store._heartbeat
     assert hb["mode"] == "watch" and hb["intervalSeconds"] == 120
     assert hb["lastSeenAt"]
+
+
+def test_write_heartbeat_helper_and_thread_payload():
+    from assistant.runner import _write_heartbeat
+
+    store = MemoryStore()
+    _write_heartbeat(store, "watch", 120)
+    hb = store._heartbeat
+    assert hb["mode"] == "watch" and hb["intervalSeconds"] == 120 and hb["lastSeenAt"]
+
+    class BrokenStore(MemoryStore):
+        def save_heartbeat(self, data):
+            raise RuntimeError("firestore down")
+
+    _write_heartbeat(BrokenStore(), "once", 0)   # 不抛出，只记日志

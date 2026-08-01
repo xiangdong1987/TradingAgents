@@ -146,14 +146,35 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
         logger.exception("review stage failed")
 
     # 心跳：App 首页据此显示 runner 在线/离线
+    _write_heartbeat(store, "watch" if watch_interval else "once",
+                     watch_interval or 0)
+
+    return 0
+
+
+def _write_heartbeat(store, mode: str, interval: int) -> None:
     try:
         store.save_heartbeat({"lastSeenAt": datetime.now(timezone.utc).isoformat(),
-                              "mode": "watch" if watch_interval else "once",
-                              "intervalSeconds": watch_interval or 0})
+                              "mode": mode, "intervalSeconds": interval})
     except Exception:
         logger.exception("heartbeat write failed")
 
-    return 0
+
+def _start_heartbeat_thread(store, interval: int):
+    """独立心跳线程：主循环跑长分析时首页仍能看到 Runner 在线。"""
+    import threading
+    import time as _time
+
+    beat_every = min(60, max(15, interval))
+
+    def _beat():
+        while True:
+            _write_heartbeat(store, "watch", interval)
+            _time.sleep(beat_every)
+
+    t = threading.Thread(target=_beat, daemon=True, name="heartbeat")
+    t.start()
+    return t
 
 
 def _parse_args(argv=None):
@@ -189,6 +210,7 @@ def main(argv=None) -> int:
     import time
 
     logger.info("watch mode: pulling jobs every %d s (Ctrl-C to stop)", args.watch)
+    _start_heartbeat_thread(store, args.watch)
     # 单机单消费者：本进程启动即意味着旧 runner 已死，遗留的 running 任务
     # 全部是被杀进程的遗孤，直接回收重排（否则要等 2 小时僵尸清理）。
     try:
