@@ -1,0 +1,28 @@
+"""Execute one claimed job; failures land in the job doc, never raise."""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+
+from assistant.store import utc_now_iso
+
+logger = logging.getLogger(__name__)
+
+
+def execute_job(store, job: dict, *, brief_fn, deep_fn) -> None:
+    jid = job["id"]
+    try:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if job["type"] == "daily_brief":
+            brief_fn(today)
+            store.update_job(jid, {"status": "done", "finishedAt": utc_now_iso()})
+        elif job["type"] == "deep_analysis":
+            analysis_id, _decision = deep_fn(job["ticker"], today)
+            store.update_job(jid, {"status": "done", "finishedAt": utc_now_iso(),
+                                   "analysisId": analysis_id})
+        else:
+            raise ValueError(f"unknown job type: {job['type']}")
+    except Exception as exc:
+        logger.exception("job %s failed", jid)
+        store.update_job(jid, {"status": "failed", "error": str(exc),
+                               "finishedAt": utc_now_iso()})
