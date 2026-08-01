@@ -91,6 +91,21 @@ void main() {
     expect(a.section('bull'), '');
   });
 
+  test('Brief parses quotes map and defaults to empty', () {
+    final b = Brief.fromDoc('2026-08-01', {
+      'date': '2026-08-01', 'markdownZh': 'x', 'tickers': ['NVDA'],
+      'createdAt': '2026-08-01T10:00:00+00:00',
+      'quotes': {'NVDA': {'close': 110, 'pctChange': 2.93}},
+    });
+    expect(b.quotes['NVDA']!.close, 110.0);
+    expect(b.quotes['NVDA']!.pctChange, 2.93);
+    final old = Brief.fromDoc('2026-07-31', {
+      'date': '2026-07-31', 'markdownZh': 'x', 'tickers': [],
+      'createdAt': '2026-07-31T10:00:00+00:00',
+    });
+    expect(old.quotes, isEmpty);
+  });
+
   test('WatchItem and PortfolioMeta parse with defaults', () {
     final w = WatchItem.fromDoc('NVDA', {'ticker': 'NVDA', 'deepFreq': 'weekly'});
     expect(w.note, '');

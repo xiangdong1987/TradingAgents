@@ -66,3 +66,26 @@ def test_brief_handles_zero_cost_basis():
     assert md                                                 # still generates
     assert "无成本价" in llm.prompts[0]                        # degraded label in prompt
     assert "GOOG" in llm.prompts[0]                           # ticker still included
+
+
+def test_brief_stores_structured_quotes():
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n")
+    saved = store.get_brief("2026-08-01")
+    assert saved["quotes"]["NVDA"] == {"close": 110.0, "pctChange": 10.0}
+    assert saved["quotes"]["AAPL"] == {"close": 110.0, "pctChange": 10.0}
+
+
+def test_failed_quote_ticker_absent_from_quotes_map():
+    def flaky_quote(ticker, **kw):
+        if ticker == "NVDA":
+            raise QuoteUnavailable("nope")
+        return ok_quote(ticker)
+
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=flaky_quote, fetch_news=lambda t, s, e: "n")
+    saved = store.get_brief("2026-08-01")
+    assert "NVDA" not in saved["quotes"]
+    assert saved["quotes"]["AAPL"]["close"] == 110.0
