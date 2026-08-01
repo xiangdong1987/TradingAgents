@@ -47,29 +47,6 @@ class PnlPill extends StatelessWidget {
   }
 }
 
-/// Right-aligned price-over-pill stack sized to fit a [ListTile.trailing]
-/// slot (which caps children at ~48px): 15sp price + compact pill.
-class PriceWithPill extends StatelessWidget {
-  const PriceWithPill({super.key, required this.price, required this.pct});
-
-  final double price;
-  final double pct;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        MoneyText(price, size: 15),
-        const SizedBox(height: 2),
-        PnlPill(pct, compact: true),
-      ],
-    );
-  }
-}
-
 /// Bold tabular-figure money text: `value.toStringAsFixed(2)`.
 class MoneyText extends StatelessWidget {
   const MoneyText(this.value, {super.key, this.size = 17.0, this.weight = FontWeight.w700, this.color});

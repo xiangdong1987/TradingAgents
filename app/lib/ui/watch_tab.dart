@@ -91,7 +91,15 @@ class WatchTab extends ConsumerWidget {
 
   Widget _quoteColumn(TickerQuote? q) {
     if (q == null) return const Text('—');
-    return PriceWithPill(price: q.close, pct: q.pctChange);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        MoneyText(q.close),
+        const SizedBox(height: 2),
+        PnlPill(q.pctChange),
+      ],
+    );
   }
 }
 
