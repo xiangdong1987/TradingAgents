@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../logic/portfolio_math.dart' show isIsin;
 import '../models/models.dart';
 import '../providers.dart';
-import 'history_tab.dart';
+import 'ticker_dashboard_page.dart';
 import 'widgets/pnl.dart';
 import 'widgets/stream_error.dart';
 import 'widgets/ticker_field.dart';
@@ -54,7 +54,7 @@ class WatchTab extends ConsumerWidget {
                         ),
                         onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
-                                builder: (_) => TickerAnalysesPage(ticker: w.ticker))),
+                                builder: (_) => TickerDashboardPage(ticker: w.ticker))),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
