@@ -47,7 +47,7 @@ void main() {
     expect(find.byType(LoginPage), findsNothing);  // MockFirebaseAuth 登录成功切换到主壳
   });
 
-  testWidgets('login shows error and stays on LoginPage when sign-in throws', (tester) async {
+  testWidgets('login shows FirebaseAuthException message and stays on LoginPage', (tester) async {
     final auth = MockFirebaseAuth(signedIn: false);
     // firebase_auth_mocks 0.15.2 removed the `authExceptions:` constructor param;
     // its documented replacement is whenCalling(...).on(...).thenThrow(...) from
@@ -62,6 +62,24 @@ void main() {
     await tester.tap(find.byKey(const Key('signInButton')));
     await tester.pumpAndSettle();
     expect(find.text('账号不存在'), findsOneWidget);
+    expect(find.byType(LoginPage), findsOneWidget);
+  });
+
+  testWidgets('login shows generic error and stays on LoginPage for non-FirebaseAuthException',
+      (tester) async {
+    final auth = MockFirebaseAuth(signedIn: false);
+    // Exercises the catch-all branch (anything other than FirebaseAuthException),
+    // e.g. a PlatformException or network error from the plugin channel.
+    whenCalling(Invocation.method(#signInWithEmailAndPassword, null))
+        .on(auth)
+        .thenThrow(Exception('网络错误'));
+    await tester.pumpWidget(_app(auth, FakeFirebaseFirestore()));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('email')), 'me@x.com');
+    await tester.enterText(find.byKey(const Key('password')), 'secret123');
+    await tester.tap(find.byKey(const Key('signInButton')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('登录失败'), findsOneWidget);
     expect(find.byType(LoginPage), findsOneWidget);
   });
 }

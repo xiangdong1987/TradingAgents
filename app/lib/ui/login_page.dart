@@ -26,9 +26,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       await ref.read(firebaseAuthProvider).signInWithEmailAndPassword(
           email: _email.text.trim(), password: _password.text);
     } on FirebaseAuthException catch (e) {
-      setState(() => _error = e.message ?? '登录失败');
+      if (mounted) setState(() => _error = e.message ?? '登录失败');
     } catch (e) {
-      setState(() => _error = '登录失败: $e');
+      if (mounted) setState(() => _error = '登录失败: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
