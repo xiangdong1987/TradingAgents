@@ -132,12 +132,18 @@ class _PositionDialog extends StatefulWidget {
   State<_PositionDialog> createState() => _PositionDialogState();
 }
 
+/// Formats a double for prefill without corrupting fractional values:
+/// whole numbers print without a decimal point (`10.5` stays `10.5`,
+/// `11.0` prints `11`), avoiding `toStringAsFixed(0)`'s silent rounding.
+String _fmtPrefill(double v) =>
+    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+
 class _PositionDialogState extends State<_PositionDialog> {
   late final _ticker = TextEditingController(text: widget.existing?.ticker ?? '');
-  late final _shares =
-      TextEditingController(text: widget.existing?.shares.toStringAsFixed(0) ?? '');
-  late final _avgCost =
-      TextEditingController(text: widget.existing?.avgCost.toStringAsFixed(2) ?? '');
+  late final _shares = TextEditingController(
+      text: widget.existing == null ? '' : _fmtPrefill(widget.existing!.shares));
+  late final _avgCost = TextEditingController(
+      text: widget.existing == null ? '' : _fmtPrefill(widget.existing!.avgCost));
 
   @override
   void dispose() {
@@ -163,6 +169,22 @@ class _PositionDialogState extends State<_PositionDialog> {
   Future<void> _delete() async {
     final existing = widget.existing;
     if (existing == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('删除 ${existing.ticker} 持仓？'),
+        content: const Text('此操作不可恢复。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(
+              key: const Key('posDeleteConfirm'),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('删除')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     await widget.ref.read(repoProvider).deletePosition(existing.ticker);
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);

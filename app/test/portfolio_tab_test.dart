@@ -106,7 +106,47 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('posDelete')));
     await tester.pumpAndSettle();
+    // Delete now opens a confirmation dialog before doing anything destructive.
+    expect(find.textContaining('删除 NVDA 持仓'), findsOneWidget);
+    expect((await db.collection('positions').doc('NVDA').get()).exists, isTrue);
+    await tester.tap(find.byKey(const Key('posDeleteConfirm')));
+    await tester.pumpAndSettle();
     expect((await db.collection('positions').doc('NVDA').get()).exists, isFalse);
     expect(find.textContaining('已删除 NVDA'), findsOneWidget);
+  });
+
+  testWidgets('cancelling the delete confirmation keeps the position', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await _seed(db);
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('NVDA').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('posDelete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('取消').last);
+    await tester.pumpAndSettle();
+    expect((await db.collection('positions').doc('NVDA').get()).exists, isTrue);
+    // The edit dialog itself should still be open (only the confirm closed).
+    expect(find.byKey(const Key('posSave')), findsOneWidget);
+  });
+
+  testWidgets('edit dialog prefills fractional shares/avgCost losslessly', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('positions').doc('NVDA').set({
+      'ticker': 'NVDA', 'shares': 10.5, 'avgCost': 150.25,
+      'updatedAt': '2026-08-01T00:00:00+00:00',
+    });
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('NVDA').first);
+    await tester.pumpAndSettle();
+    expect(find.text('10.5'), findsOneWidget);
+    expect(find.text('150.25'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('posSave')));
+    await tester.pumpAndSettle();
+    final doc = (await db.collection('positions').doc('NVDA').get()).data()!;
+    expect(doc['shares'], 10.5);
+    expect(doc['avgCost'], 150.25);
   });
 }
