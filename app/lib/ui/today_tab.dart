@@ -27,14 +27,14 @@ class TodayTab extends ConsumerWidget {
 
     return ListView(
       children: [
-        _OverviewBar(summary: summary),
-        _AgendaCard(events: ref.watch(calendarEventsProvider).value ?? const []),
+        // 1. 任务状态横幅置顶
         for (final job in jobs.value ?? const <Job>[])
           MaterialBanner(
             content: Text(switch (job.type) {
               'deep_analysis' =>
                 '${job.ticker} 深度分析中（${job.status == "queued" ? "排队" : "分析中"}）',
               'refresh_quotes' => '行情刷新中',
+              'chat' => '问答回复生成中',
               _ => '日报生成中',
             }),
             // 用静态图标而非不确定态 CircularProgressIndicator：后者的 ticker 永不停止，
@@ -42,21 +42,32 @@ class TodayTab extends ConsumerWidget {
             leading: const Icon(Icons.sync, size: 20),
             actions: const [SizedBox.shrink()],
           ),
+        // 2. 概览一条 + 3. 日历为主体
+        _OverviewBar(summary: summary),
+        _AgendaCard(events: ref.watch(calendarEventsProvider).value ?? const []),
+        // 4. 日报默认收起，点开展阅
         brief.when(
           data: (b) => b == null
               ? const Padding(
-                  padding: EdgeInsets.all(32),
+                  padding: EdgeInsets.all(24),
                   child: Text('还没有日报。runner 会在交易日收盘后生成第一份。',
                       textAlign: TextAlign.center),
                 )
-              : Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              : Card(
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  clipBehavior: Clip.antiAlias,
+                  child: ExpansionTile(
+                    key: const Key('briefTile'),
+                    title: Text('每日投资日报 · ${b.date}',
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w700)),
+                    leading: const Icon(Icons.article_outlined, size: 18),
+                    shape: const Border(),
                     children: [
-                      Text(b.date, style: Theme.of(context).textTheme.labelLarge),
-                      const SizedBox(height: 8),
-                      MarkdownBody(data: b.markdownZh),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: MarkdownBody(data: b.markdownZh),
+                      ),
                     ],
                   ),
                 ),
