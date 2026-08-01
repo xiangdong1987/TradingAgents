@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../logic/portfolio_math.dart';
 import '../models/models.dart';
 import '../providers.dart';
+import 'widgets/pnl.dart';
 
 class PortfolioTab extends ConsumerWidget {
   const PortfolioTab({super.key});
@@ -14,16 +16,7 @@ class PortfolioTab extends ConsumerWidget {
     final meta = ref.watch(portfolioMetaProvider).value ??
         const PortfolioMeta(cash: 0, currency: 'USD');
     final quotes = ref.watch(latestBriefProvider).value?.quotes ?? const {};
-
-    double priceOf(Position p) => quotes[p.ticker]?.close ?? p.avgCost;
-    final stockValue =
-        positions.fold<double>(0, (sum, p) => sum + p.shares * priceOf(p));
-    final total = meta.cash + stockValue;
-    final cost = positions.fold<double>(0, (s, p) => s + p.shares * p.avgCost);
-    // 总浮动盈亏 % 相对持仓投入成本计算（不含现金——现金已单独展示，且现金本身不产生盈亏，
-    // 计入分母会人为稀释持仓的真实收益率）。
-    final hasQuote = positions.any((p) => quotes.containsKey(p.ticker));
-    final pnlPct = (cost > 0 && hasQuote) ? (stockValue - cost) / cost * 100 : null;
+    final summary = summarize(positions, meta, quotes);
 
     return Scaffold(
       body: ListView(
@@ -37,26 +30,62 @@ class PortfolioTab extends ConsumerWidget {
                   builder: (_) => _CashDialog(ref: ref, current: meta.cash)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Text('现金 ${meta.cash.toStringAsFixed(2)} ${meta.currency}'),
-                    Text('总市值 ${total.toStringAsFixed(2)}'),
-                    Text('浮动盈亏 ${pnlPct == null ? '—' : '${pnlPct >= 0 ? '+' : ''}${pnlPct.toStringAsFixed(2)}%'}'),
+                    Expanded(
+                        child: _OverviewColumn(
+                            label: '现金', value: MoneyText(summary.cash, size: 20))),
+                    Expanded(
+                        child: _OverviewColumn(
+                            label: '总市值', value: MoneyText(summary.total, size: 20))),
+                    Expanded(
+                        child: _OverviewColumn(
+                            label: '浮动盈亏',
+                            value: summary.pnlPct == null
+                                ? const Text('—')
+                                : Text(
+                                    pnlLabel(summary.pnlPct!),
+                                    style: TextStyle(
+                                        color: pnlColor(summary.pnlPct!),
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w800),
+                                  ))),
                   ],
                 ),
               ),
             ),
           ),
           if (positions.isEmpty)
-            const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('暂无持仓')))
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.pie_chart_outline,
+                        size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(height: 8),
+                    const Text('暂无持仓'),
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      onPressed: () => showDialog<void>(
+                          context: context, builder: (_) => _PositionDialog(ref: ref)),
+                      child: const Text('添加第一笔持仓'),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else
             for (final p in positions)
               ListTile(
-                title: Text(p.ticker),
+                title: Text(p.ticker,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 subtitle: Text(
-                    '${p.shares.toStringAsFixed(0)} 股 @ ${p.avgCost.toStringAsFixed(2)}'),
-                trailing: Text(_pnlLine(p, quotes[p.ticker])),
+                  '${p.shares.toStringAsFixed(0)} 股 · 成本 ${p.avgCost.toStringAsFixed(2)}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+                trailing: _positionTrailing(p, quotes[p.ticker]),
                 onTap: () => showDialog<void>(
                     context: context,
                     builder: (_) => _PositionDialog(ref: ref, existing: p)),
@@ -72,10 +101,40 @@ class PortfolioTab extends ConsumerWidget {
     );
   }
 
-  String _pnlLine(Position p, TickerQuote? q) {
-    if (q == null) return '现价 —';
+  Widget _positionTrailing(Position p, TickerQuote? q) {
+    if (q == null) return const Text('现价 —');
     final pnl = (q.close - p.avgCost) / p.avgCost * 100;
-    return '${q.close.toStringAsFixed(2)}  ${pnl >= 0 ? '+' : ''}${pnl.toStringAsFixed(2)}%';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        MoneyText(q.close),
+        const SizedBox(height: 2),
+        PnlPill(pnl),
+      ],
+    );
+  }
+}
+
+/// Small gray label above a bold value — the shared shape of one column in
+/// the three-way cash / market-value / pnl overview row.
+class _OverviewColumn extends StatelessWidget {
+  const _OverviewColumn({required this.label, required this.value});
+  final String label;
+  final Widget value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(label,
+            style: TextStyle(
+                fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 4),
+        value,
+      ],
+    );
   }
 }
 

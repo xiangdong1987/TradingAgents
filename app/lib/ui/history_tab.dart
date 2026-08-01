@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'analysis_detail_page.dart';
+import 'widgets/pnl.dart';
 import 'widgets/snapshot_list.dart';
 
 const _suggestionStatusLabels = <String, String>{
@@ -109,14 +110,41 @@ class _SuggestionsList extends ConsumerWidget {
           for (final s in items)
             ListTile(
               title: Text('${s.ticker} · ${s.action.toUpperCase()}'),
-              subtitle: s.outcomePct != null
-                  ? Text('复盘 ${s.outcomePct! >= 0 ? '+' : ''}${s.outcomePct!.toStringAsFixed(1)}%')
-                  : null,
-              trailing: Chip(
-                  label: Text(_suggestionStatusLabels[s.status] ?? s.status)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (s.outcomePct != null) PnlPill(s.outcomePct!, compact: true),
+                  const SizedBox(width: 6),
+                  _StatusChip(status: s.status),
+                ],
+              ),
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Outline-style status chip for a suggestion's lifecycle state:
+/// accepted → green outline, dismissed → gray, pending → amber. Copy is
+/// unchanged (已采纳/已忽略/待处理).
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.status});
+  final String status;
+
+  Color get _color => switch (status) {
+        'accepted' => const Color(0xFF34C759),
+        'pending' => Colors.amber,
+        _ => Colors.grey,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _color;
+    return Chip(
+      label: Text(_suggestionStatusLabels[status] ?? status, style: TextStyle(color: color)),
+      backgroundColor: Colors.transparent,
+      side: BorderSide(color: color),
     );
   }
 }
@@ -131,7 +159,7 @@ class AnalysisListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final a = analysis;
     return ListTile(
-      title: Text('${a.ticker} · ${a.decision}'),
+      title: Text('${a.ticker} · ${a.decision}', style: const TextStyle(fontWeight: FontWeight.w700)),
       subtitle: Text(a.tradeDate),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => AnalysisDetailPage(analysis: a)),

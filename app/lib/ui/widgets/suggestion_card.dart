@@ -30,9 +30,9 @@ class SuggestionCard extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                OutlinedButton(onPressed: onAccept, child: const Text('采纳')),
+                FilledButton(onPressed: onAccept, child: const Text('采纳')),
                 const SizedBox(width: 8),
-                OutlinedButton(onPressed: onDismiss, child: const Text('忽略')),
+                TextButton(onPressed: onDismiss, child: const Text('忽略')),
               ],
             ),
           ],

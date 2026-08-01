@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // Markdown 渲染 import 按 Task 1 选定的包调整：
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import '../logic/portfolio_math.dart';
 import '../models/models.dart';
 import '../providers.dart';
+import 'widgets/pnl.dart';
 import 'widgets/stream_error.dart';
 import 'widgets/suggestion_card.dart';
 
@@ -16,9 +18,15 @@ class TodayTab extends ConsumerWidget {
     final brief = ref.watch(latestBriefProvider);
     final suggestions = ref.watch(pendingSuggestionsProvider);
     final jobs = ref.watch(activeJobsProvider);
+    final positions = ref.watch(positionsProvider).value ?? const <Position>[];
+    final meta = ref.watch(portfolioMetaProvider).value ??
+        const PortfolioMeta(cash: 0, currency: 'USD');
+    final quotes = ref.watch(latestBriefProvider).value?.quotes ?? const {};
+    final summary = summarize(positions, meta, quotes);
 
     return ListView(
       children: [
+        _OverviewBar(summary: summary),
         for (final job in jobs.value ?? const <Job>[])
           MaterialBanner(
             content: Text(job.type == 'deep_analysis'
@@ -76,6 +84,78 @@ class TodayTab extends ConsumerWidget {
           _ => const <Widget>[],
         },
         const SizedBox(height: 24),
+      ],
+    );
+  }
+}
+
+/// Combined market-value / pnl / cash overview, shown above the daily brief.
+/// Mirrors [PortfolioTab]'s three-column overview card but with the
+/// heavier 22sp/w800 total emphasis and a de-emphasized (gray) cash column
+/// called for by this tab's brief.
+class _OverviewBar extends StatelessWidget {
+  const _OverviewBar({required this.summary});
+  final PortfolioSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: _OverviewColumn(
+                label: '总市值',
+                labelColor: grey,
+                value: MoneyText(summary.total, size: 22, weight: FontWeight.w800),
+              ),
+            ),
+            Expanded(
+              child: _OverviewColumn(
+                label: '浮动盈亏',
+                labelColor: grey,
+                value: summary.pnlPct == null
+                    ? const Text('—')
+                    : Text(
+                        pnlLabel(summary.pnlPct!),
+                        style: TextStyle(
+                            color: pnlColor(summary.pnlPct!),
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800),
+                      ),
+              ),
+            ),
+            Expanded(
+              child: _OverviewColumn(
+                label: '现金',
+                labelColor: grey,
+                value: MoneyText(summary.cash, size: 20, color: grey),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OverviewColumn extends StatelessWidget {
+  const _OverviewColumn({required this.label, required this.labelColor, required this.value});
+  final String label;
+  final Color labelColor;
+  final Widget value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, color: labelColor)),
+        const SizedBox(height: 4),
+        value,
       ],
     );
   }

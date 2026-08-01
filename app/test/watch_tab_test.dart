@@ -31,7 +31,7 @@ void main() {
     expect(find.text('NVDA'), findsOneWidget);
     expect(find.textContaining('200.75'), findsOneWidget);
     expect(find.textContaining('2.93'), findsOneWidget);
-    expect(find.text('weekly'), findsOneWidget);
+    expect(find.text('每周自动分析'), findsOneWidget);
   });
 
   testWidgets('analyze button enqueues a user job', (tester) async {
@@ -80,7 +80,7 @@ void main() {
     await _seed(db);
     await tester.pumpWidget(_wrap(db));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('weekly'));
+    await tester.tap(find.text('每周自动分析'));
     await tester.pumpAndSettle();
     expect((await db.collection('watchlist').doc('NVDA').get()).data()!['deepFreq'], 'manual');
   });
