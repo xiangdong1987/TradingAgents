@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "130608717195",
+    "project_id": "wealth-assistant-5141d",
+    "storage_bucket": "wealth-assistant-5141d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:130608717195:android:a6354ff90563c9368a638e",
+        "android_client_info": {
+          "package_name": "com.wealthassistant.wealth_assistant"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "130608717195-fmtoo8h2m144qtbbv6rdgccq6b292ae2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJBkae8zF8Mw0QOu6HnchGWOm83jLF5ZI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "130608717195-fmtoo8h2m144qtbbv6rdgccq6b292ae2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
