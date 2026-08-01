@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 
 class SuggestionCard extends StatelessWidget {
-  const SuggestionCard({super.key, required this.suggestion});
+  const SuggestionCard({super.key, required this.suggestion, this.onAccept, this.onDismiss});
   final Suggestion suggestion;
+  final VoidCallback? onAccept;
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -28,16 +30,9 @@ class SuggestionCard extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                // 占位按钮：写路径在计划三接通
-                Tooltip(
-                  message: '计划三启用',
-                  child: OutlinedButton(onPressed: null, child: const Text('采纳')),
-                ),
+                OutlinedButton(onPressed: onAccept, child: const Text('采纳')),
                 const SizedBox(width: 8),
-                Tooltip(
-                  message: '计划三启用',
-                  child: OutlinedButton(onPressed: null, child: const Text('忽略')),
-                ),
+                OutlinedButton(onPressed: onDismiss, child: const Text('忽略')),
               ],
             ),
           ],
