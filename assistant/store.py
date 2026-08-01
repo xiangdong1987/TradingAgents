@@ -22,6 +22,7 @@ class Store(Protocol):
     def get_portfolio_meta(self) -> dict: ...
     def get_brief(self, date_str: str) -> dict | None: ...
     def save_brief(self, date_str: str, data: dict) -> None: ...
+    def merge_brief_quotes(self, date_str: str, quotes: dict) -> None: ...
     def save_analysis(self, data: dict) -> str: ...
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool: ...
     def save_suggestion(self, data: dict) -> str: ...
@@ -76,6 +77,12 @@ class MemoryStore:
 
     def save_brief(self, date_str: str, data: dict) -> None:
         self._briefs[date_str] = dict(data)
+
+    def merge_brief_quotes(self, date_str: str, quotes: dict) -> None:
+        doc = self._briefs.get(date_str)
+        if doc is None:
+            return
+        doc.setdefault("quotes", {}).update(quotes)
 
     # --- analyses ---
     def save_analysis(self, data: dict) -> str:
@@ -183,6 +190,13 @@ class FirestoreStore:
 
     def save_brief(self, date_str: str, data: dict) -> None:
         self._db.collection("briefs").document(date_str).set(data)
+
+    def merge_brief_quotes(self, date_str: str, quotes: dict) -> None:
+        # set(merge=True) deep-merges the nested quotes map, preserving
+        # existing tickers' entries.
+        self._db.collection("briefs").document(date_str).set(
+            {"quotes": quotes}, merge=True
+        )
 
     # --- analyses ---
     def save_analysis(self, data: dict) -> str:

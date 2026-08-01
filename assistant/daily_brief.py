@@ -82,3 +82,42 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
         "quotes": quotes_map,
     })
     return markdown
+
+
+def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
+                  lookback_days: int = 3) -> int:
+    """Fill quotes missing from the most recent brief for the CURRENT
+    watchlist ∪ positions.
+
+    Tickers added after a brief was generated have no price in the client
+    until the next brief; this tops them up cheaply (no LLM call). Looks
+    back up to ``lookback_days`` for the latest brief doc (weekends). Returns
+    the number of tickers added.
+    """
+    tickers = {w["ticker"] for w in store.get_watchlist()}
+    tickers |= {p["ticker"] for p in store.get_positions()}
+    if not tickers:
+        return 0
+
+    day = datetime.strptime(today, "%Y-%m-%d")
+    brief, brief_date = None, None
+    for back in range(lookback_days + 1):
+        candidate = (day - timedelta(days=back)).strftime("%Y-%m-%d")
+        brief = store.get_brief(candidate)
+        if brief is not None:
+            brief_date = candidate
+            break
+    if brief is None:
+        return 0
+
+    existing = brief.get("quotes") or {}
+    added = {}
+    for t in sorted(tickers - set(existing)):
+        try:
+            q = fetch_quote(t)
+        except Exception:
+            continue
+        added[t] = {"close": q["close"], "pctChange": q["pctChange"]}
+    if added:
+        store.merge_brief_quotes(brief_date, added)
+    return len(added)

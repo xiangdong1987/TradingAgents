@@ -34,7 +34,7 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     # Light imports only; heavy/real deps (tradingagents.*, FirestoreStore,
     # create_llm_client) are wired by main(), not here, to keep this module
     # importable without any of that machinery installed.
-    from assistant.daily_brief import generate_daily_brief
+    from assistant.daily_brief import generate_daily_brief, top_up_quotes
     from assistant.deep_analysis import run_deep_analysis
     from assistant.advisor import generate_suggestion
 
@@ -99,6 +99,16 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
             execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn)
     except Exception:
         logger.exception("scheduled job planning/execution stage failed")
+
+    # 3.5 quotes top-up: tickers added after the last brief get prices now
+    # (the client reads prices from brief.quotes), no LLM cost involved.
+    try:
+        kwargs = {} if fetch_quote is None else {"fetch_quote": fetch_quote}
+        topped = top_up_quotes(store, now_et.strftime("%Y-%m-%d"), **kwargs)
+        if topped:
+            logger.info("topped up quotes for %d ticker(s)", topped)
+    except Exception:
+        logger.exception("quotes top-up stage failed")
 
     # 4. review
     reviewed = 0

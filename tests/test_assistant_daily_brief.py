@@ -89,3 +89,49 @@ def test_failed_quote_ticker_absent_from_quotes_map():
     saved = store.get_brief("2026-08-01")
     assert "NVDA" not in saved["quotes"]
     assert saved["quotes"]["AAPL"]["close"] == 110.0
+
+
+def test_top_up_quotes_fills_only_missing_tickers():
+    from assistant.daily_brief import top_up_quotes
+
+    store = make_store()  # watchlist NVDA + position AAPL
+    store.save_brief("2026-08-01", {
+        "date": "2026-08-01", "markdownZh": "x", "tickers": ["NVDA"],
+        "createdAt": "2026-08-01T10:00:00+00:00",
+        "quotes": {"NVDA": {"close": 100.0, "pctChange": 1.0}},
+    })
+    added = top_up_quotes(store, "2026-08-01", fetch_quote=ok_quote)
+    assert added == 1                                   # 只补 AAPL
+    quotes = store.get_brief("2026-08-01")["quotes"]
+    assert quotes["NVDA"] == {"close": 100.0, "pctChange": 1.0}   # 原值保留
+    assert quotes["AAPL"] == {"close": 110.0, "pctChange": 10.0}
+
+
+def test_top_up_quotes_looks_back_to_latest_brief_and_survives_failures():
+    from assistant.daily_brief import top_up_quotes
+    from assistant.quotes import QuoteUnavailable
+
+    store = make_store()
+    store.save_brief("2026-07-31", {                    # 周五的日报，周日补
+        "date": "2026-07-31", "markdownZh": "x", "tickers": [],
+        "createdAt": "2026-07-31T10:00:00+00:00", "quotes": {},
+    })
+
+    def flaky(ticker, **kw):
+        if ticker == "NVDA":
+            raise QuoteUnavailable("nope")
+        return ok_quote(ticker)
+
+    added = top_up_quotes(store, "2026-08-02", fetch_quote=flaky)
+    assert added == 1                                   # AAPL 成功，NVDA 失败跳过
+    assert "AAPL" in store.get_brief("2026-07-31")["quotes"]
+
+
+def test_top_up_quotes_no_brief_or_no_tickers_is_noop():
+    from assistant.daily_brief import top_up_quotes
+    from assistant.store import MemoryStore
+
+    assert top_up_quotes(make_store(), "2026-08-01", fetch_quote=ok_quote) == 0  # 无日报
+    empty = MemoryStore()
+    empty.save_brief("2026-08-01", {"date": "2026-08-01", "quotes": {}})
+    assert top_up_quotes(empty, "2026-08-01", fetch_quote=ok_quote) == 0         # 无股票
