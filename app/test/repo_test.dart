@@ -89,6 +89,24 @@ void main() {
     });
   });
 
+  test('acceptWithTrade writes the trade and flips suggestion status in one batch', () async {
+    final ref = await db.collection('suggestions').add({
+      'ticker': 'NVDA', 'action': 'trim', 'rationale': 'r', 'analysisId': 'a',
+      'status': 'pending', 'createdAt': '2026-08-01T00:00:00+00:00',
+    });
+    await repo.acceptWithTrade(
+        suggestionId: ref.id, ticker: 'NVDA', side: 'sell', shares: 3, price: 200.5,
+        date: '2026-08-01');
+    final trades = (await db.collection('trades').get()).docs;
+    expect(trades.single.data(), {
+      'ticker': 'NVDA', 'side': 'sell', 'shares': 3.0, 'price': 200.5,
+      'date': '2026-08-01', 'suggestionId': ref.id,
+    });
+    final suggestion = (await db.collection('suggestions').doc(ref.id).get()).data()!;
+    expect(suggestion['status'], 'accepted');
+    expect(suggestion['resolvedAt'], endsWith('+00:00'));
+  });
+
   test('setPosition/deletePosition/setCash roundtrip', () async {
     await repo.setPosition(ticker: 'NVDA', shares: 10, avgCost: 150);
     var doc = (await db.collection('positions').doc('NVDA').get()).data()!;

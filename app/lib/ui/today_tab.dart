@@ -113,11 +113,13 @@ class _AcceptDialogState extends State<_AcceptDialog> {
       final price = double.tryParse(_price.text);
       if (shares == null || shares <= 0 || price == null || price <= 0) return;
       final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
-      await repo.addTrade(
-          ticker: widget.suggestion.ticker, side: _side, shares: shares,
-          price: price, date: today, suggestionId: widget.suggestion.id);
+      // Batched write: trade doc + suggestion status flip land atomically.
+      await repo.acceptWithTrade(
+          suggestionId: widget.suggestion.id, ticker: widget.suggestion.ticker,
+          side: _side, shares: shares, price: price, date: today);
+    } else {
+      await repo.resolveSuggestion(widget.suggestion.id, accepted: true);
     }
-    await repo.resolveSuggestion(widget.suggestion.id, accepted: true);
     if (mounted) Navigator.of(context).pop();
   }
 

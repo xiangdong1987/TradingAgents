@@ -74,6 +74,24 @@ class WealthRepo {
     await _db.collection('trades').add(data);
   }
 
+  /// Records a trade and marks its originating suggestion accepted atomically:
+  /// either both writes land or neither does (avoids a trade doc with no
+  /// matching accepted suggestion if the app crashes mid-write).
+  Future<void> acceptWithTrade({
+    required String suggestionId, required String ticker, required String side,
+    required double shares, required double price, required String date,
+  }) async {
+    final batch = _db.batch();
+    batch.set(_db.collection('trades').doc(), {
+      'ticker': ticker, 'side': side, 'shares': shares, 'price': price,
+      'date': date, 'suggestionId': suggestionId,
+    });
+    batch.update(_db.collection('suggestions').doc(suggestionId), {
+      'status': 'accepted', 'resolvedAt': utcNowIso(),
+    });
+    await batch.commit();
+  }
+
   Future<void> setPosition({
     required String ticker, required double shares, required double avgCost,
   }) =>
