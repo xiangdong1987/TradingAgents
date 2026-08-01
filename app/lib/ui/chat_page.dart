@@ -3,7 +3,10 @@
 /// 新消息在底部，输入框钉在底部；回答实时推送。
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -60,7 +63,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   ),
                 )
               // chatsProvider 按 createdAt 降序 → reverse 列表天然新消息在底部
-              : ListView.builder(
+              : SelectionArea(
+                  child: ListView.builder(
                   reverse: true,
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                   itemCount: chats.length,
@@ -68,10 +72,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     final c = chats[i];
                     return Column(
                       children: [
-                        _Bubble.right(child: Text(c.question)),
+                        _Bubble.right(copyText: c.question, child: Text(c.question)),
                         switch (c.status) {
-                          'answered' =>
-                            _Bubble.left(child: MarkdownBody(data: c.answer ?? '')),
+                          'answered' => _Bubble.left(
+                              copyText: c.answer,
+                              child: MarkdownBody(
+                                  data: c.answer ?? '',
+                                  styleSheet: _chatMarkdown(context))),
                           'failed' => _Bubble.left(
                               child: Text('回答失败，请重新提问',
                                   style: TextStyle(color: pnlColor(-1)))),
@@ -81,6 +88,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ],
                     );
                   },
+                ),
                 ),
         ),
         SafeArea(
@@ -115,37 +123,77 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 }
 
-class _Bubble extends StatelessWidget {
-  const _Bubble({required this.child, required this.alignRight});
+/// 气泡内 Markdown 紧凑样式：标题降为正文级加粗，分隔线细化，间距收紧。
+MarkdownStyleSheet _chatMarkdown(BuildContext context) {
+  final theme = Theme.of(context);
+  final body = theme.textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
+  TextStyle h(double size) =>
+      body.copyWith(fontSize: size, fontWeight: FontWeight.w700, height: 1.4);
+  return MarkdownStyleSheet.fromTheme(theme).copyWith(
+    p: body.copyWith(height: 1.5),
+    h1: h(17),
+    h2: h(16),
+    h3: h(15),
+    h4: h(14),
+    h5: h(14),
+    h6: h(14),
+    listBullet: body,
+    blockSpacing: 8,
+    horizontalRuleDecoration: BoxDecoration(
+      border: Border(
+          top: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5)),
+    ),
+  );
+}
 
-  const _Bubble.right({required Widget child})
-      : this(child: child, alignRight: true);
-  const _Bubble.left({required Widget child})
-      : this(child: child, alignRight: false);
+class _Bubble extends StatelessWidget {
+  const _Bubble({required this.child, required this.alignRight, this.copyText});
+
+  const _Bubble.right({required Widget child, String? copyText})
+      : this(child: child, alignRight: true, copyText: copyText);
+  const _Bubble.left({required Widget child, String? copyText})
+      : this(child: child, alignRight: false, copyText: copyText);
 
   final Widget child;
   final bool alignRight;
+  final String? copyText;
+
+  Future<void> _copy(BuildContext context) async {
+    final text = copyText;
+    if (text == null || text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已复制')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Align(
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.82),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: alignRight ? scheme.primaryContainer : const Color(0xFF1C1C1E),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft: Radius.circular(alignRight ? 14 : 4),
-            bottomRight: Radius.circular(alignRight ? 4 : 14),
+      child: GestureDetector(
+        onLongPress: () => _copy(context),
+        child: Container(
+          // 宽屏（web/桌面）上限 640，避免整行铺开难以阅读
+          constraints: BoxConstraints(
+              maxWidth:
+                  math.min(MediaQuery.of(context).size.width * 0.82, 640)),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color:
+                alignRight ? scheme.primaryContainer : const Color(0xFF1C1C1E),
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(14),
+              topRight: const Radius.circular(14),
+              bottomLeft: Radius.circular(alignRight ? 14 : 4),
+              bottomRight: Radius.circular(alignRight ? 4 : 14),
+            ),
           ),
+          child: child,
         ),
-        child: child,
       ),
     );
   }
