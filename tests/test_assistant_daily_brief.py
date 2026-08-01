@@ -53,3 +53,16 @@ def test_brief_survives_single_ticker_failures():
     assert md                                                 # 仍产出
     assert "行情获取失败" in llm.prompts[0]                    # 失败股在 prompt 里标注而非丢弃
     assert "新闻获取失败" in llm.prompts[0]
+
+
+def test_brief_handles_zero_cost_basis():
+    s = MemoryStore()
+    s.seed_watchlist([])
+    s.seed_positions([{"ticker": "GOOG", "shares": 5, "avgCost": 0.0, "updatedAt": "x"}])  # gifted/spinoff stock
+    s.seed_meta({"cash": 2000.0, "currency": "USD"})
+    store, llm = s, FakeLLM()
+    md = generate_daily_brief(store, llm, "2026-08-01",
+                              fetch_quote=ok_quote, fetch_news=lambda t, s, e: f"{t} news")
+    assert md                                                 # still generates
+    assert "无成本价" in llm.prompts[0]                        # degraded label in prompt
+    assert "GOOG" in llm.prompts[0]                           # ticker still included

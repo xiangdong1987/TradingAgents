@@ -53,8 +53,11 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
         pos = positions.get(t)
         if pos:
             if q:
-                pnl = round((q["close"] - pos["avgCost"]) / pos["avgCost"] * 100, 2)
-                pnl_str = f"浮动盈亏 {pnl:+.2f}%"
+                if pos["avgCost"] and pos["avgCost"] > 0:
+                    pnl = round((q["close"] - pos["avgCost"]) / pos["avgCost"] * 100, 2)
+                    pnl_str = f"浮动盈亏 {pnl:+.2f}%"
+                else:
+                    pnl_str = "浮动盈亏 未知（无成本价）"
             else:
                 pnl_str = "浮动盈亏 未知（行情获取失败）"
             position_parts.append(
