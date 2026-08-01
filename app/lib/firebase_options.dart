@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -56,7 +53,6 @@ class DefaultFirebaseOptions {
     projectId: 'wealth-assistant-5141d',
     storageBucket: 'wealth-assistant-5141d.firebasestorage.app',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyDcQv5NEDoC4uCciu8d_0I771a11mU_O1U',
     appId: '1:130608717195:ios:eecf485f3f8f99488a638e',
@@ -65,5 +61,14 @@ class DefaultFirebaseOptions {
     storageBucket: 'wealth-assistant-5141d.firebasestorage.app',
     iosClientId: '130608717195-upchobnu44eoaicm3o2hkin5ksqg3tfg.apps.googleusercontent.com',
     iosBundleId: 'com.wealthassistant.wealthAssistant',
+  );
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyBdrtB7oXxaO2bXGW2lrCxA20Ve198si38',
+    appId: '1:130608717195:web:6fa2c9e4b1248cf48a638e',
+    messagingSenderId: '130608717195',
+    projectId: 'wealth-assistant-5141d',
+    authDomain: 'wealth-assistant-5141d.firebaseapp.com',
+    storageBucket: 'wealth-assistant-5141d.firebasestorage.app',
+    measurementId: 'G-3F2V169TM8',
   );
 }
