@@ -104,15 +104,7 @@ class PortfolioTab extends ConsumerWidget {
   Widget _positionTrailing(Position p, TickerQuote? q) {
     if (q == null) return const Text('现价 —');
     final pnl = (q.close - p.avgCost) / p.avgCost * 100;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        MoneyText(q.close),
-        const SizedBox(height: 2),
-        PnlPill(pnl),
-      ],
-    );
+    return PriceWithPill(price: q.close, pct: pnl);
   }
 }
 
