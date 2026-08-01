@@ -38,6 +38,7 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     from assistant.deep_analysis import run_deep_analysis
     from assistant.advisor import generate_suggestion
     from assistant.events import refresh_calendar
+    from assistant.chat import answer_chat
 
     if now_et is None:
         now_et = datetime.now(ZoneInfo("America/New_York"))
@@ -86,6 +87,9 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
         logger.info("force-refreshed quotes for %d ticker(s)", refreshed)
         refresh_calendar(store, **_calendar_kwargs())
 
+    def chat_fn(chat_id: str, today: str) -> None:
+        answer_chat(store, llm, chat_id, today)
+
     # 1. zombie cleanup
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=ZOMBIE_AFTER_HOURS)).isoformat()
@@ -99,7 +103,7 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     try:
         for job in store.claim_queued_jobs():
             execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn,
-                        refresh_fn=refresh_fn)
+                        refresh_fn=refresh_fn, chat_fn=chat_fn)
     except Exception:
         logger.exception("user job execution stage failed")
 
@@ -108,7 +112,7 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
         plan_scheduled_jobs(store, now_et, is_trading_day=is_trading_day)
         for job in store.claim_queued_jobs():
             execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn,
-                        refresh_fn=refresh_fn)
+                        refresh_fn=refresh_fn, chat_fn=chat_fn)
     except Exception:
         logger.exception("scheduled job planning/execution stage failed")
 

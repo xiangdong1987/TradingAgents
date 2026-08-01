@@ -10,7 +10,8 @@ from assistant.store import utc_now_iso
 logger = logging.getLogger(__name__)
 
 
-def execute_job(store, job: dict, *, brief_fn, deep_fn, refresh_fn=None) -> None:
+def execute_job(store, job: dict, *, brief_fn, deep_fn, refresh_fn=None,
+                chat_fn=None) -> None:
     jid = job["id"]
     try:
         today = job.get("date")
@@ -27,6 +28,11 @@ def execute_job(store, job: dict, *, brief_fn, deep_fn, refresh_fn=None) -> None
             if refresh_fn is None:
                 raise ValueError("refresh_fn not wired")
             refresh_fn(today)
+            store.update_job(jid, {"status": "done", "finishedAt": utc_now_iso()})
+        elif job["type"] == "chat":
+            if chat_fn is None:
+                raise ValueError("chat_fn not wired")
+            chat_fn(job["chatId"], today)
             store.update_job(jid, {"status": "done", "finishedAt": utc_now_iso()})
         else:
             raise ValueError(f"unknown job type: {job['type']}")

@@ -25,6 +25,9 @@ class Store(Protocol):
     def merge_brief_quotes(self, date_str: str, quotes: dict) -> None: ...
     def get_calendar(self) -> dict | None: ...
     def save_calendar(self, data: dict) -> None: ...
+    def get_chat(self, cid: str) -> dict | None: ...
+    def update_chat(self, cid: str, fields: dict) -> None: ...
+    def recent_analyses(self, limit: int = 6) -> list[dict]: ...
     def save_analysis(self, data: dict) -> str: ...
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool: ...
     def save_suggestion(self, data: dict) -> str: ...
@@ -91,6 +94,25 @@ class MemoryStore:
 
     def save_calendar(self, data: dict) -> None:
         self._calendar = dict(data)
+
+    def get_chat(self, cid: str) -> dict | None:
+        doc = getattr(self, "_chats", {}).get(cid)
+        return dict(doc) if doc else None
+
+    def add_chat(self, data: dict) -> str:
+        if not hasattr(self, "_chats"):
+            self._chats = {}
+        cid = self._next_id()
+        self._chats[cid] = dict(data)
+        return cid
+
+    def update_chat(self, cid: str, fields: dict) -> None:
+        self._chats[cid].update(fields)
+
+    def recent_analyses(self, limit: int = 6) -> list[dict]:
+        docs = sorted(self._analyses.values(),
+                      key=lambda a: a.get("createdAt", ""), reverse=True)
+        return [dict(d) for d in docs[:limit]]
 
     # --- analyses ---
     def save_analysis(self, data: dict) -> str:
@@ -212,6 +234,18 @@ class FirestoreStore:
 
     def save_calendar(self, data: dict) -> None:
         self._db.collection("meta").document("calendar").set(data)
+
+    def get_chat(self, cid: str) -> dict | None:
+        snap = self._db.collection("chats").document(cid).get()
+        return snap.to_dict() if snap.exists else None
+
+    def update_chat(self, cid: str, fields: dict) -> None:
+        self._db.collection("chats").document(cid).update(fields)
+
+    def recent_analyses(self, limit: int = 6) -> list[dict]:
+        q = (self._db.collection("analyses")
+             .order_by("createdAt", direction="DESCENDING").limit(limit))
+        return [d.to_dict() for d in q.stream()]
 
     # --- analyses ---
     def save_analysis(self, data: dict) -> str:

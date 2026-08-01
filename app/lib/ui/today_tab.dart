@@ -28,6 +28,7 @@ class TodayTab extends ConsumerWidget {
       children: [
         _OverviewBar(summary: summary),
         _AgendaCard(events: ref.watch(calendarEventsProvider).value ?? const []),
+        _AskCard(ref: ref, chats: ref.watch(chatsProvider).value ?? const []),
         for (final job in jobs.value ?? const <Job>[])
           MaterialBanner(
             content: Text(switch (job.type) {
@@ -290,3 +291,86 @@ class _AgendaCard extends StatelessWidget {
     );
   }
 }
+
+/// 「问一问」：结合当前持仓向 LLM 提问（经 chat job 队列，watch 模式下约 2 分钟内回答）。
+class _AskCard extends StatefulWidget {
+  const _AskCard({required this.ref, required this.chats});
+  final WidgetRef ref;
+  final List<ChatMessage> chats;
+
+  @override
+  State<_AskCard> createState() => _AskCardState();
+}
+
+class _AskCardState extends State<_AskCard> {
+  final _q = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _q.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _q.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      await widget.ref.read(repoProvider).askQuestion(text);
+      _q.clear();
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+    final recent = widget.chats.take(3).toList();
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.chat_bubble_outline, size: 16, color: grey),
+              const SizedBox(width: 6),
+              Text('问一问（结合当前持仓回答）', style: TextStyle(fontSize: 12, color: grey)),
+            ]),
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('askField'),
+                  controller: _q,
+                  decoration: const InputDecoration(
+                      hintText: '例：可口可乐和 Intesa 哪个更适合买入？'),
+                  onSubmitted: (_) => _send(),
+                ),
+              ),
+              IconButton(
+                key: const Key('askSend'),
+                icon: const Icon(Icons.send),
+                onPressed: _sending ? null : _send,
+              ),
+            ]),
+            for (final c in recent) ...[
+              const SizedBox(height: 8),
+              Text('问：${c.question}',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              switch (c.status) {
+                'answered' => MarkdownBody(data: c.answer ?? ''),
+                'failed' => Text('回答失败，请重试', style: TextStyle(color: pnlColor(-1))),
+                _ => Text('分析中…', style: TextStyle(color: grey)),
+              },
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+

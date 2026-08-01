@@ -20,4 +20,6 @@ final portfolioMetaProvider =
     StreamProvider<PortfolioMeta>((ref) => ref.watch(repoProvider).portfolioMeta());
 final calendarEventsProvider =
     StreamProvider<List<CalendarEvent>>((ref) => ref.watch(repoProvider).calendarEvents());
+final chatsProvider =
+    StreamProvider<List<ChatMessage>>((ref) => ref.watch(repoProvider).chats());
 

@@ -125,6 +125,30 @@ class WealthRepo {
       _db.collection('watchlist').doc(ticker).update({'deepFreq': deepFreq});
 
 
+
+  /// 最近的问答（新到旧）。
+  Stream<List<ChatMessage>> chats({int limit = 10}) => _db
+      .collection('chats')
+      .orderBy('createdAt', descending: true)
+      .limit(limit)
+      .snapshots()
+      .map((q) => [for (final d in q.docs) ChatMessage.fromDoc(d.id, d.data())]);
+
+  /// 提问：chats 文档 + chat job 原子入队，runner 结合持仓生成回答。
+  Future<String> askQuestion(String question) async {
+    final chatRef = _db.collection('chats').doc();
+    final batch = _db.batch();
+    batch.set(chatRef, {
+      'question': question, 'status': 'pending', 'createdAt': utcNowIso(),
+    });
+    batch.set(_db.collection('jobs').doc(), {
+      'type': 'chat', 'chatId': chatRef.id, 'status': 'queued',
+      'requestedBy': 'user', 'createdAt': utcNowIso(),
+    });
+    await batch.commit();
+    return chatRef.id;
+  }
+
   /// meta/calendar 里的财报/分红日程（runner 每日刷新）。
   Stream<List<CalendarEvent>> calendarEvents() => _db
       .collection('meta')

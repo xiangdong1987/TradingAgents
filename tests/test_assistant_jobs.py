@@ -83,3 +83,13 @@ def test_refresh_quotes_without_wiring_fails_gracefully():
     execute_job(s, job, brief_fn=None, deep_fn=None)
     failed = s.get_job(job["id"])
     assert failed["status"] == "failed" and "refresh_fn" in failed["error"]
+
+
+def test_chat_job_invokes_chat_fn_with_chat_id():
+    s = MemoryStore()
+    job = queued(s, type="chat", chatId="c1")
+    seen = []
+    execute_job(s, job, brief_fn=None, deep_fn=None,
+                chat_fn=lambda cid, today: seen.append((cid, today)))
+    assert s.get_job(job["id"])["status"] == "done"
+    assert seen[0][0] == "c1"

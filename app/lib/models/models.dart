@@ -197,3 +197,21 @@ class CalendarEvent {
   factory CalendarEvent.fromMap(Map<String, dynamic> d) => CalendarEvent(
       ticker: _s(d['ticker']), type: _s(d['type']), date: _s(d['date']));
 }
+
+class ChatMessage {
+  const ChatMessage({required this.id, required this.question, this.answer,
+      required this.status, required this.createdAt});
+  final String id;
+  final String question;
+  final String? answer;
+  final String status; // pending | answered | failed
+  final DateTime createdAt;
+
+  factory ChatMessage.fromDoc(String id, Map<String, dynamic> d) => ChatMessage(
+      id: id,
+      question: _s(d['question']),
+      answer: d['answer'] as String?,
+      status: _s(d['status'], 'pending'),
+      createdAt: _t(d['createdAt']));
+}
+

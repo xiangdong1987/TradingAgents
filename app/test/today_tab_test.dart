@@ -65,4 +65,33 @@ void main() {
     expect(find.text('财报'), findsOneWidget);
     expect(find.text('OLD'), findsNothing);
   });
+
+  testWidgets('ask card sends question: chat doc + chat job created', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('askField')), 'KO 和 ISP.MI 买哪个？');
+    await tester.tap(find.byKey(const Key('askSend')));
+    await tester.pumpAndSettle();
+    final chat = (await db.collection('chats').get()).docs.single;
+    expect(chat.data()['question'], 'KO 和 ISP.MI 买哪个？');
+    expect(chat.data()['status'], 'pending');
+    final job = (await db.collection('jobs').get()).docs.single.data();
+    expect(job['type'], 'chat');
+    expect(job['chatId'], chat.id);
+    expect(find.text('问：KO 和 ISP.MI 买哪个？'), findsOneWidget);   // 实时回显
+    expect(find.text('分析中…'), findsOneWidget);
+  });
+
+  testWidgets('answered chat renders markdown answer', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('chats').add({
+      'question': '现金太多吗', 'answer': '**结论**：可以加仓', 'status': 'answered',
+      'createdAt': '2026-08-01T00:00:00+00:00',
+    });
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.text('问：现金太多吗'), findsOneWidget);
+    expect(find.textContaining('可以加仓'), findsOneWidget);
+  });
 }
