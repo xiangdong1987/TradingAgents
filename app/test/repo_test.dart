@@ -65,4 +65,84 @@ void main() {
     expect((await repo.watchlist().first).map((w) => w.ticker), ['AAPL', 'NVDA']);
     expect((await repo.positions().first).single.avgCost, 150.0);
   });
+
+  test('resolveSuggestion sets status and resolvedAt', () async {
+    final ref = await db.collection('suggestions').add({
+      'ticker': 'NVDA', 'action': 'trim', 'rationale': 'r', 'analysisId': 'a',
+      'status': 'pending', 'createdAt': '2026-08-01T00:00:00+00:00',
+    });
+    await repo.resolveSuggestion(ref.id, accepted: true);
+    final doc = (await db.collection('suggestions').doc(ref.id).get()).data()!;
+    expect(doc['status'], 'accepted');
+    expect(doc['resolvedAt'], endsWith('+00:00'));
+    await repo.resolveSuggestion(ref.id, accepted: false);
+    expect((await db.collection('suggestions').doc(ref.id).get()).data()!['status'], 'dismissed');
+  });
+
+  test('addTrade writes a trade doc linked to suggestion', () async {
+    await repo.addTrade(ticker: 'NVDA', side: 'sell', shares: 3, price: 200.5,
+        date: '2026-08-01', suggestionId: 's1');
+    final docs = (await db.collection('trades').get()).docs;
+    expect(docs.single.data(), {
+      'ticker': 'NVDA', 'side': 'sell', 'shares': 3.0, 'price': 200.5,
+      'date': '2026-08-01', 'suggestionId': 's1',
+    });
+  });
+
+  test('setPosition/deletePosition/setCash roundtrip', () async {
+    await repo.setPosition(ticker: 'NVDA', shares: 10, avgCost: 150);
+    var doc = (await db.collection('positions').doc('NVDA').get()).data()!;
+    expect(doc['shares'], 10.0);
+    expect(doc['updatedAt'], endsWith('+00:00'));
+    await repo.setCash(8888.0);
+    expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 8888.0);
+    await repo.deletePosition('NVDA');
+    expect((await db.collection('positions').doc('NVDA').get()).exists, isFalse);
+  });
+
+  test('watchlist add/remove/setDeepFreq', () async {
+    await repo.addWatch('NVDA', deepFreq: 'weekly');
+    var doc = (await db.collection('watchlist').doc('NVDA').get()).data()!;
+    expect(doc['deepFreq'], 'weekly');
+    expect(doc['addedAt'], endsWith('+00:00'));
+    await repo.setDeepFreq('NVDA', 'manual');
+    expect((await db.collection('watchlist').doc('NVDA').get()).data()!['deepFreq'], 'manual');
+    await repo.removeWatch('NVDA');
+    expect((await db.collection('watchlist').doc('NVDA').get()).exists, isFalse);
+  });
+
+  test('enqueueDeepAnalysis writes user job without date field', () async {
+    final jid = await repo.enqueueDeepAnalysis('NVDA');
+    final doc = (await db.collection('jobs').doc(jid).get()).data()!;
+    expect(doc['type'], 'deep_analysis');
+    expect(doc['ticker'], 'NVDA');
+    expect(doc['status'], 'queued');
+    expect(doc['requestedBy'], 'user');
+    expect(doc.containsKey('date'), isFalse);
+  });
+
+  test('analysesForTicker filters and sorts desc; recentAnalyses sorts desc', () async {
+    for (final (t, ts) in [('NVDA', '2026-07-01'), ('AAPL', '2026-07-02'), ('NVDA', '2026-07-03')]) {
+      await db.collection('analyses').add({
+        'ticker': t, 'tradeDate': ts, 'decision': 'HOLD', 'sections': {},
+        'createdAt': '${ts}T00:00:00+00:00',
+      });
+    }
+    final nvda = await repo.analysesForTicker('NVDA').first;
+    expect(nvda.map((a) => a.tradeDate), ['2026-07-03', '2026-07-01']);
+    final recent = await repo.recentAnalyses().first;
+    expect(recent.first.tradeDate, '2026-07-03');
+    expect(recent.length, 3);
+  });
+
+  test('allSuggestions returns newest first regardless of status', () async {
+    for (final (t, st, ts) in [('A', 'accepted', '01'), ('B', 'pending', '02'), ('C', 'dismissed', '03')]) {
+      await db.collection('suggestions').add({
+        'ticker': t, 'action': 'buy', 'rationale': 'r', 'analysisId': 'x',
+        'status': st, 'createdAt': '2026-08-${ts}T00:00:00+00:00',
+      });
+    }
+    final all = await repo.allSuggestions().first;
+    expect(all.map((s) => s.ticker), ['C', 'B', 'A']);
+  });
 }
