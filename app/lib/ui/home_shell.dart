@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'today_tab.dart';
+import 'watch_tab.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -14,7 +15,7 @@ class _HomeShellState extends State<HomeShell> {
 
   final _tabs = const [
     TodayTab(),
-    Center(child: Text('自选（建设中）')),
+    WatchTab(),
     Center(child: Text('持仓（建设中）')),
     Center(child: Text('历史（建设中）')),
   ];

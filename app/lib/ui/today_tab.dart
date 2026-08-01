@@ -7,11 +7,6 @@ import '../models/models.dart';
 import '../providers.dart';
 import 'widgets/suggestion_card.dart';
 
-final latestBriefProvider = StreamProvider<Brief?>((ref) => ref.watch(repoProvider).latestBrief());
-final pendingSuggestionsProvider =
-    StreamProvider<List<Suggestion>>((ref) => ref.watch(repoProvider).pendingSuggestions());
-final activeJobsProvider = StreamProvider<List<Job>>((ref) => ref.watch(repoProvider).activeJobs());
-
 class TodayTab extends ConsumerWidget {
   const TodayTab({super.key});
 
