@@ -221,3 +221,6 @@ __marimo__/
 # Enterprise env file (secrets) and generated run reports
 .env.enterprise
 reports/
+
+# Local run artifacts when TRADINGAGENTS_RESULTS_DIR points into the repo
+results/
