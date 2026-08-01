@@ -135,4 +135,21 @@ engine 负责一切副作用（yfinance 取数、从 trades 重建单元、去�
 ## 分期
 
 - **P1（本次）**：quotes OHLC + 框架(registry/engine/CLI) + turtle 完整双系统 + jobs/scheduler 接入 + 去重 + /strategy 技能 + App source chip + 全部测试
-- **P2**：App 设置页调参与手动触发按钮、仪表盘 Donchian 通道可视化、EUR/USD 真实汇率、LLM 型策略插件、分单元 trim
+- **P2**：App 设置页调参、仪表盘 Donchian 通道可视化、EUR/USD 真实汇率、LLM 型策略插件、分单元 trim
+- 已提前落地的 P2 项：今日 tab 建议区「🐢 海龟扫描」按钮（2026-08-02，main 3923199）
+
+## 回测工具（2026-08-02 增补，用户要求）
+
+`assistant/strategies/backtest.py`：把历史日线逐日重放给策略 `scan()`——与实盘扫描
+**共用同一策略代码**，回测的就是线上逻辑。
+
+- `simulate(ticker, bars, scan, params)` 纯函数：信号当收盘成交、现金封顶不加杠杆、
+  每标的独立资金（单标的视角）；产出 equity 曲线 + 回合列表
+- 指标：总收益/年化(CAGR)/最大回撤/在场比例/回合数/胜率 + 买入持有基准
+- CLI：`python -m assistant.strategies.backtest turtle <tickers|watchlist|positions>
+  [--start] [--end] [--cash]`；参数自动合并线上 meta/strategies 覆盖
+- 假设记录：无滑点/手续费；信号即执行（衡量纪律执行的策略本身）
+- 测试：tests/test_assistant_backtest.py（合成行情：赢/输/未平仓/资金封顶/起始日/回撤口径）
+- 首跑结论（2026-08-02，自选 9 只、3 年）：平均 +33.8% vs 买入持有 +142.2%，0/9 跑赢——
+  大牛市里趋势跟踪跑不过满仓持有属预期；代价换来的是回撤显著更小（-6%~-21% vs 持有回撤更深）
+  与低在场比例。海龟适合震荡/熊市防守，不是牛市进攻武器
