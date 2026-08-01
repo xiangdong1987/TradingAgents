@@ -72,8 +72,10 @@ briefs/{YYYY-MM-DD}         每日轻量日报（文档 ID=日期，天然幂等
   { date, markdownZh, tickers: [...], createdAt }
 
 analyses/{autoId}           深度分析
-  { ticker, tradeDate, decision, sections: {market, news, sentiment,
-    fundamentals, debate, risk}, createdAt }
+  { ticker, tradeDate, decision, sections: {market, sentiment, news,
+    fundamentals, bull, bear, researchManager, traderPlan,
+    riskAggressive, riskConservative, riskNeutral, portfolioDecision,
+    finalDecision}, createdAt }
 
 suggestions/{autoId}        操作建议
   { ticker, action: "buy"|"add"|"trim"|"sell"|"hold",

@@ -1,0 +1,50 @@
+"""Numeric quote helpers for the assistant (engine dataflows return prose)."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+
+class QuoteUnavailable(Exception):
+    pass
+
+
+def _yf_history(ticker: str, start: str, end: str) -> list[tuple[str, float]]:
+    """Return ascending [(YYYY-MM-DD, close)] via yfinance. Lazy import."""
+    import yfinance as yf
+
+    end_excl = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    df = yf.Ticker(ticker).history(start=start, end=end_excl)
+    if df.empty:
+        return []
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+    return [(idx.strftime("%Y-%m-%d"), float(row["Close"])) for idx, row in df.iterrows()]
+
+
+def get_quote(ticker: str, _history=_yf_history) -> dict:
+    end = datetime.utcnow().strftime("%Y-%m-%d")
+    start = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    rows = _history(ticker, start, end)
+    if len(rows) < 2:
+        raise QuoteUnavailable(f"not enough daily bars for {ticker}")
+    prev_close, close = rows[-2][1], rows[-1][1]
+    return {
+        "ticker": ticker,
+        "close": close,
+        "prevClose": prev_close,
+        "pctChange": round((close - prev_close) / prev_close * 100, 2),
+    }
+
+
+def get_return_pct(ticker: str, start_date: str, end_date: str, _history=_yf_history) -> float:
+    rows = _history(ticker, start_date, end_date)
+    if len(rows) < 2:
+        raise QuoteUnavailable(f"not enough daily bars for {ticker}")
+    first, last = rows[0][1], rows[-1][1]
+    return round((last - first) / first * 100, 2)
+
+
+def is_trading_day_now(now_et: datetime, _history=_yf_history) -> bool:
+    today = now_et.strftime("%Y-%m-%d")
+    rows = _history("SPY", today, today)
+    return bool(rows) and rows[-1][0] == today

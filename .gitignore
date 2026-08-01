@@ -222,5 +222,7 @@ __marimo__/
 .env.enterprise
 reports/
 
+# Firebase service account keys must never be committed
+firebase-service-account.json
 # Local run artifacts when TRADINGAGENTS_RESULTS_DIR points into the repo
 results/

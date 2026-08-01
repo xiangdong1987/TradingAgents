@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tradingagents.assistant</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Volumes/external/code/ai/projects/TradingAgents/.venv/bin/python</string>
+        <string>-m</string>
+        <string>assistant.runner</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Volumes/external/code/ai/projects/TradingAgents</string>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/tradingagents-assistant.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/tradingagents-assistant.err.log</string>
+</dict>
+</plist>
