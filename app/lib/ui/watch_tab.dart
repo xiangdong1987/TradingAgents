@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../logic/portfolio_math.dart' show isIsin;
 import '../models/models.dart';
 import '../providers.dart';
 import 'history_tab.dart';
@@ -59,7 +60,10 @@ class WatchTab extends ConsumerWidget {
                           children: [
                             _quoteColumn(w.ticker, quotes[w.ticker]),
                             const SizedBox(width: 8),
-                            activeTickers.containsKey(w.ticker)
+                            isIsin(w.ticker)
+                                // 单只债券没有可分析的资料面，隐藏分析入口
+                                ? const SizedBox.shrink()
+                                : activeTickers.containsKey(w.ticker)
                                 ? Chip(label: Text(
                                     activeTickers[w.ticker] == 'queued' ? '排队中' : '分析中'))
                                 : FilledButton.tonal(

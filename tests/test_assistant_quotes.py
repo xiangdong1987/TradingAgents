@@ -39,3 +39,19 @@ def test_last_trading_day_returns_latest_bar_on_or_before():
     assert last_trading_day("2026-07-31", _history=fake_history(rows)) == "2026-07-31"
     with pytest.raises(QuoteUnavailable):
         last_trading_day("2026-08-01", _history=fake_history([]))
+
+
+def test_isin_quotes_use_borsa_italiana():
+    from assistant.quotes import get_quote, is_isin, _parse_borsa_price
+
+    assert is_isin("IT0001247391") and not is_isin("ENEL.MI") and not is_isin("NVDA")
+
+    fixture = ('<strong>Prezzo ufficiale</strong> </span> </td> <td> '
+               '<span class="t-text -right">1.098,42</span>')
+    assert _parse_borsa_price(fixture) == 1098.42
+
+    q = get_quote("IT0001247391", _fetch_html=lambda isin: fixture)
+    assert q["close"] == 1098.42 and q["pctChange"] == 0.0
+
+    with pytest.raises(QuoteUnavailable):
+        _parse_borsa_price("<html>nothing here</html>")

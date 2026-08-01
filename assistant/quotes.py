@@ -27,7 +27,10 @@ def _yf_history(ticker: str, start: str, end: str) -> list[tuple[str, float]]:
     return [(idx.strftime("%Y-%m-%d"), float(row["Close"])) for idx, row in df.iterrows()]
 
 
-def get_quote(ticker: str, _history=_yf_history) -> dict:
+def get_quote(ticker: str, _history=_yf_history, _fetch_html=None) -> dict:
+    if is_isin(ticker):
+        kwargs = {} if _fetch_html is None else {"_fetch_html": _fetch_html}
+        return _borsa_bond_quote(ticker, **kwargs)
     end = datetime.utcnow().strftime("%Y-%m-%d")
     start = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
     rows = _history(ticker, start, end)
@@ -69,3 +72,45 @@ def is_trading_day_now(now_et: datetime, _history=_yf_history) -> bool:
     today = now_et.strftime("%Y-%m-%d")
     rows = _history("SPY", today, today)
     return bool(rows) and rows[-1][0] == today
+
+
+# --- Borsa Italiana MOT bonds (by ISIN) ------------------------------------
+# Yahoo has no per-bond coverage; borsaitaliana.it's public quote page does.
+# Prices are per-100 nominal (standard bond convention).
+
+import re
+
+_ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+
+
+def is_isin(ticker: str) -> bool:
+    return bool(_ISIN_RE.match(ticker))
+
+
+def _parse_it_number(s: str) -> float:
+    """Italian format: '.' thousands, ',' decimals — '1.234,56' -> 1234.56."""
+    return float(s.replace(".", "").replace(",", "."))
+
+
+def _parse_borsa_price(html: str) -> float:
+    flat = re.sub(r"\s+", " ", html)
+    for label in ("Prezzo ufficiale", "Prezzo di riferimento"):
+        m = re.search(re.escape(label) + r".{0,200}?([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]+)", flat)
+        if m:
+            return _parse_it_number(m.group(1))
+    raise QuoteUnavailable("no price found on Borsa Italiana page")
+
+
+def _fetch_borsa_html(isin: str) -> str:
+    import requests
+
+    url = f"https://www.borsaitaliana.it/borsa/obbligazioni/mot/btp/scheda/{isin}.html"
+    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+    resp.raise_for_status()
+    return resp.text
+
+
+def _borsa_bond_quote(isin: str, _fetch_html=_fetch_borsa_html) -> dict:
+    price = _parse_borsa_price(_fetch_html(isin))
+    # 页面无前收盘，涨跌幅暂记 0；持仓盈亏按成本价计算，不受影响。
+    return {"ticker": isin, "close": price, "prevClose": price, "pctChange": 0.0}

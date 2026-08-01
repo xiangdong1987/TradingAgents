@@ -9,8 +9,14 @@ library;
 
 import '../models/models.dart';
 
-/// Borsa Italiana listings are EUR-quoted.
-bool isEurListing(String ticker) => ticker.endsWith('.MI');
+final _isinRe = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
+
+/// 12 位 ISIN（如 IT0001247391）——单只债券按 ISIN 跟踪，行情来自 Borsa Italiana。
+bool isIsin(String ticker) => _isinRe.hasMatch(ticker);
+
+/// Borsa Italiana listings (.MI) and Italian ISINs are EUR-quoted.
+bool isEurListing(String ticker) =>
+    ticker.endsWith('.MI') || (ticker.startsWith('IT') && isIsin(ticker));
 
 class PortfolioSummary {
   const PortfolioSummary({

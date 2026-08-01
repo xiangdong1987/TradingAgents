@@ -85,4 +85,12 @@ void main() {
     expect(summary.totalEur, 250.0);
     expect(summary.pnlPct, isNull);
   });
+
+  test('isin detection and eur classification', () {
+    expect(isIsin('IT0001247391'), isTrue);
+    expect(isIsin('ENEL.MI'), isFalse);
+    expect(isIsin('NVDA'), isFalse);
+    expect(isEurListing('IT0001247391'), isTrue);   // 意大利债券按欧元
+    expect(isEurListing('US0378331005'), isFalse);  // 非 IT 前缀 ISIN 不按欧元
+  });
 }

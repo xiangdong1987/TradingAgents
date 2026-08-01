@@ -6,6 +6,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../logic/portfolio_math.dart' show isEurListing;
+
 /// iOS system green for gains, red for losses (>= 0 counts as a gain).
 Color pnlColor(double v) => v >= 0 ? const Color(0xFF34C759) : const Color(0xFFFF3B30);
 
@@ -48,7 +50,7 @@ class PnlPill extends StatelessWidget {
 }
 
 /// `$` for US listings, `€` for Borsa Italiana (`.MI`).
-String currencyPrefix(String ticker) => ticker.endsWith('.MI') ? '€' : '\$';
+String currencyPrefix(String ticker) => isEurListing(ticker) ? '€' : '\$';
 
 /// Right-aligned price-over-pill stack sized to fit a [ListTile.trailing]
 /// slot (which caps children at ~48px): 15sp price + compact pill.
