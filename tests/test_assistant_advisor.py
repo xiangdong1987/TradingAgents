@@ -50,3 +50,19 @@ def test_malformed_llm_reply_degrades_gracefully():
     assert doc["action"] == "sell"                  # 从 decision 降级映射
     assert doc["targetWeightPct"] is None
     assert "减仓" in doc["rationale"]                # 原始输出保留
+
+
+def test_quote_fetch_failure_falls_back_to_cost_basis():
+    store = make_store()
+
+    def quote_unavailable(ticker, **kw):
+        raise RuntimeError("quote service down")
+
+    llm = FakeLLM('{"action": "hold", "targetWeightPct": null, "rationale": "使用成本价估值"}')
+    sid = generate_suggestion(store, llm, "NVDA", "BUY", "a2", fetch_quote=quote_unavailable)
+    doc = store._suggestions[sid]
+    assert doc["status"] == "pending"
+    assert sid is not None  # suggestion still generated despite quote failure
+    # prompt should use cost basis: 10*100=1000 股票 + 1000 现金 → 50.0% 权重
+    assert "50.0" in llm.prompts[0]
+    assert "100" in llm.prompts[0]  # cost basis in the prompt
