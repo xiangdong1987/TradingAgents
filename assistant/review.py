@@ -21,12 +21,12 @@ def review_due_suggestions(store, today: str, *, review_after_days: int = 14,
     cutoff_iso = cutoff_date.strftime("%Y-%m-%d") + "T23:59:59+00:00"
     reviewed = 0
     for sug in store.suggestions_due_review(cutoff_iso):
-        start_date = sug["createdAt"][:10]
         try:
+            start_date = sug["createdAt"][:10]
             outcome = fetch_return(sug["ticker"], start_date, today)
+            store.update_suggestion(sug["id"], {"outcomePct": outcome, "reviewedAt": utc_now_iso()})
+            reviewed += 1
         except Exception:
             logger.warning("review failed for %s (%s)", sug["id"], sug["ticker"], exc_info=True)
             continue
-        store.update_suggestion(sug["id"], {"outcomePct": outcome, "reviewedAt": utc_now_iso()})
-        reviewed += 1
     return reviewed
