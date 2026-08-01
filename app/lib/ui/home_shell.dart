@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'today_tab.dart';
+
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -10,8 +12,8 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _tabs = [
-    Center(child: Text('今日（建设中）')),
+  final _tabs = const [
+    TodayTab(),
     Center(child: Text('自选（建设中）')),
     Center(child: Text('持仓（建设中）')),
     Center(child: Text('历史（建设中）')),
