@@ -3,6 +3,8 @@
 /// All numbers arrive as int OR double from Firestore — parse via _d().
 library;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 double _d(Object? v, [double fallback = 0]) =>
     v == null ? fallback : (v as num).toDouble();
 
@@ -10,10 +12,17 @@ double? _dOrNull(Object? v) => v == null ? null : (v as num).toDouble();
 
 String _s(Object? v, [String fallback = '']) => (v as String?) ?? fallback;
 
-DateTime _t(Object? v) =>
-    v == null ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true) : DateTime.parse(v as String).toUtc();
+DateTime _t(Object? v) {
+  if (v == null) return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  if (v is Timestamp) return v.toDate().toUtc();
+  return DateTime.parse(v as String).toUtc();
+}
 
-DateTime? _tOrNull(Object? v) => v == null ? null : DateTime.parse(v as String).toUtc();
+DateTime? _tOrNull(Object? v) {
+  if (v == null) return null;
+  if (v is Timestamp) return v.toDate().toUtc();
+  return DateTime.parse(v as String).toUtc();
+}
 
 class WatchItem {
   const WatchItem({required this.ticker, required this.note, required this.deepFreq, required this.addedAt});
@@ -54,18 +63,34 @@ class PortfolioMeta {
       PortfolioMeta(cash: _d(d?['cash']), currency: _s(d?['currency'], 'USD'));
 }
 
+class TickerQuote {
+  const TickerQuote({required this.close, required this.pctChange});
+  final double close;
+  final double pctChange;
+
+  factory TickerQuote.fromMap(Map<String, dynamic> d) =>
+      TickerQuote(close: _d(d['close']), pctChange: _d(d['pctChange']));
+}
+
 class Brief {
-  const Brief({required this.date, required this.markdownZh, required this.tickers, required this.createdAt});
+  const Brief({required this.date, required this.markdownZh, required this.tickers, required this.createdAt,
+      required this.quotes});
   final String date; // doc id, YYYY-MM-DD
   final String markdownZh;
   final List<String> tickers;
   final DateTime createdAt;
+  final Map<String, TickerQuote> quotes;
 
   factory Brief.fromDoc(String id, Map<String, dynamic> d) => Brief(
         date: _s(d['date'], id),
         markdownZh: _s(d['markdownZh']),
         tickers: List<String>.from(d['tickers'] as List? ?? const []),
         createdAt: _t(d['createdAt']),
+        quotes: {
+          for (final e in ((d['quotes'] as Map?) ?? const {}).entries)
+            e.key as String:
+                TickerQuote.fromMap(Map<String, dynamic>.from(e.value as Map)),
+        },
       );
 }
 

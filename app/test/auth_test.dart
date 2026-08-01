@@ -65,6 +65,15 @@ void main() {
     expect(find.byType(LoginPage), findsOneWidget);
   });
 
+  testWidgets('logout button signs out back to LoginPage', (tester) async {
+    final auth = MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u1'));
+    await tester.pumpWidget(_app(auth, FakeFirebaseFirestore()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logoutButton')));
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsOneWidget);
+  });
+
   testWidgets('login shows generic error and stays on LoginPage for non-FirebaseAuthException',
       (tester) async {
     final auth = MockFirebaseAuth(signedIn: false);

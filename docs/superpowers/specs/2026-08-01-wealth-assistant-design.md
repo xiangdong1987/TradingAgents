@@ -69,7 +69,7 @@ trades/{autoId}             交易流水（可选记录，用于复盘）
   { ticker, side: "buy"|"sell", shares, price, date, suggestionId? }
 
 briefs/{YYYY-MM-DD}         每日轻量日报（文档 ID=日期，天然幂等）
-  { date, markdownZh, tickers: [...], createdAt }
+  { date, markdownZh, tickers: [...], createdAt, quotes: {TICKER: {close, pctChange}} }
 
 analyses/{autoId}           深度分析
   { ticker, tradeDate, decision, sections: {market, sentiment, news,
@@ -81,7 +81,7 @@ suggestions/{autoId}        操作建议
   { ticker, action: "buy"|"add"|"trim"|"sell"|"hold",
     targetWeightPct?, rationale, analysisId,
     status: "pending"|"accepted"|"dismissed",
-    createdAt, resolvedAt?, reviewNote?, outcomePct? }
+    createdAt, resolvedAt?, reviewedAt?, reviewNote?, outcomePct? }
 
 jobs/{autoId}               任务队列
   { type: "daily_brief"|"deep_analysis", ticker?,

@@ -37,10 +37,12 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
 
     yesterday = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
     ticker_parts, position_parts = [], []
+    quotes_map: dict = {}
     for t in tickers:
         try:
             q = fetch_quote(t)
             quote_line = f"收盘 {q['close']}，涨跌 {q['pctChange']}%"
+            quotes_map[t] = {"close": q["close"], "pctChange": q["pctChange"]}
         except Exception:
             q = None
             quote_line = "行情获取失败"
@@ -77,5 +79,6 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
         "markdownZh": markdown,
         "tickers": tickers,
         "createdAt": utc_now_iso(),
+        "quotes": quotes_map,
     })
     return markdown

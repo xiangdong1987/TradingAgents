@@ -1,4 +1,5 @@
 // app/test/models_test.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wealth_assistant/models/models.dart';
 
@@ -89,6 +90,31 @@ void main() {
     });
     expect(a.sections['market'], 'm');
     expect(a.section('bull'), '');
+  });
+
+  test('Brief parses quotes map and defaults to empty', () {
+    final b = Brief.fromDoc('2026-08-01', {
+      'date': '2026-08-01', 'markdownZh': 'x', 'tickers': ['NVDA'],
+      'createdAt': '2026-08-01T10:00:00+00:00',
+      'quotes': {'NVDA': {'close': 110, 'pctChange': 2.93}},
+    });
+    expect(b.quotes['NVDA']!.close, 110.0);
+    expect(b.quotes['NVDA']!.pctChange, 2.93);
+    final old = Brief.fromDoc('2026-07-31', {
+      'date': '2026-07-31', 'markdownZh': 'x', 'tickers': [],
+      'createdAt': '2026-07-31T10:00:00+00:00',
+    });
+    expect(old.quotes, isEmpty);
+  });
+
+  test('_t and _tOrNull tolerate Firestore Timestamp values', () {
+    final ts = Timestamp.fromDate(DateTime.utc(2026, 8, 1, 10));
+    final j = Job.fromDoc('j', {
+      'type': 'daily_brief', 'status': 'done', 'requestedBy': 'user',
+      'createdAt': ts, 'finishedAt': ts,
+    });
+    expect(j.createdAt, DateTime.utc(2026, 8, 1, 10));
+    expect(j.finishedAt, DateTime.utc(2026, 8, 1, 10));
   });
 
   test('WatchItem and PortfolioMeta parse with defaults', () {

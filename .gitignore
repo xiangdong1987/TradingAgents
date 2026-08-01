@@ -239,3 +239,6 @@ app/macos/Pods/
 # match app/lib/ since it has no leading slash; un-ignore the Flutter source dir.
 !app/lib/
 !app/lib/**
+
+# Claude Code session worktrees (never commit)
+.claude/worktrees/
