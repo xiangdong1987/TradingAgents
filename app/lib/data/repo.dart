@@ -176,6 +176,18 @@ class WealthRepo {
     return ref.id;
   }
 
+  /// 手动触发一次策略扫描（写一条 strategy_scan job，runner 消费）。
+  /// 点名的策略无视 meta/strategies 的 enabled 配置。
+  Future<String> enqueueStrategyScan({String strategy = 'turtle', String? scope}) async {
+    final data = <String, dynamic>{
+      'type': 'strategy_scan', 'strategy': strategy, 'status': 'queued',
+      'requestedBy': 'user', 'createdAt': utcNowIso(),
+    };
+    if (scope != null) data['scope'] = scope;
+    final ref = await _db.collection('jobs').add(data);
+    return ref.id;
+  }
+
   Future<String> enqueueDeepAnalysis(String ticker) async {
     final ref = await _db.collection('jobs').add({
       'type': 'deep_analysis', 'ticker': ticker, 'status': 'queued',

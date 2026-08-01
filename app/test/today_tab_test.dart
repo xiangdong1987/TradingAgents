@@ -94,4 +94,22 @@ void main() {
     expect(find.text('NVDA'), findsOneWidget);   // 选中日明细
     expect(find.text('财报'), findsOneWidget);
   });
+
+  testWidgets('turtle scan button enqueues strategy_scan job', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.text('暂无待处理建议'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('turtleScan')));
+    await tester.tap(find.byKey(const Key('turtleScan')));
+    await tester.pumpAndSettle();
+    final job = (await db.collection('jobs').get()).docs.single.data();
+    expect(job['type'], 'strategy_scan');
+    expect(job['strategy'], 'turtle');
+    expect(job['requestedBy'], 'user');
+    // job 进了 active 流，按钮变成扫描中 chip，任务卡有正确文案
+    expect(find.text('🐢 扫描中'), findsOneWidget);
+    expect(find.byKey(const Key('turtleScan')), findsNothing);
+    expect(find.text('策略扫描'), findsOneWidget);
+  });
 }

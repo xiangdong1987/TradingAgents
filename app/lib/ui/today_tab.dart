@@ -67,12 +67,20 @@ class TodayTab extends ConsumerWidget {
               padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())),
           error: (e, _) => StreamError(error: e, onRetry: () => ref.invalidate(latestBriefProvider)),
         ),
-        ...switch (suggestions) {
-          AsyncData(:final value) when value.isNotEmpty => [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        // 5. 建议区：头部常显（右侧海龟扫描触发点），有建议时列卡片
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
                 child: Text('待处理建议', style: Theme.of(context).textTheme.titleMedium),
               ),
+              const _StrategyScanAction(),
+            ],
+          ),
+        ),
+        ...switch (suggestions) {
+          AsyncData(:final value) when value.isNotEmpty => [
               for (final s in value)
                 SuggestionCard(
                   suggestion: s,
@@ -89,10 +97,51 @@ class TodayTab extends ConsumerWidget {
                   ),
                 ),
             ],
+          AsyncData() => [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Text('暂无待处理建议',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ),
+            ],
           _ => const <Widget>[],
         },
         const SizedBox(height: 24),
       ],
+    );
+  }
+}
+
+/// 建议区头部的策略触发点：点一下排一条海龟扫描 job（持仓+自选，
+/// 零 LLM 成本）；已有排队/进行中的扫描时变成状态 chip 防重复排队。
+class _StrategyScanAction extends ConsumerWidget {
+  const _StrategyScanAction();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final jobs = ref.watch(activeJobsProvider).value ?? const <Job>[];
+    final scanning = jobs.any((j) => j.type == 'strategy_scan');
+    if (scanning) {
+      return Chip(
+        visualDensity: VisualDensity.compact,
+        label: const Text('🐢 扫描中', style: TextStyle(fontSize: 12)),
+        side: BorderSide(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        backgroundColor: Colors.transparent,
+      );
+    }
+    return FilledButton.tonal(
+      key: const Key('turtleScan'),
+      style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+      onPressed: () async {
+        await ref.read(repoProvider).enqueueStrategyScan();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('海龟扫描已排队，跑完建议会出现在这里')));
+        }
+      },
+      child: const Text('🐢 海龟扫描'),
     );
   }
 }
@@ -358,6 +407,7 @@ class _ActiveJobsCardState extends State<_ActiveJobsCard> {
         'deep_analysis' => '${j.ticker} 深度分析',
         'refresh_quotes' => '行情刷新',
         'chat' => '问答回复',
+        'strategy_scan' => '策略扫描',
         _ => '日报生成',
       };
 
