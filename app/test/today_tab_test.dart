@@ -36,6 +36,7 @@ void main() {
     expect(find.textContaining('每日投资日报'), findsOneWidget);
     await tester.tap(find.byKey(const Key('briefTile')));
     await tester.pumpAndSettle();
+    expect(find.textContaining('NVDA 上涨'), findsOneWidget);   // 展开后 markdown 正文可见
     expect(find.text('NVDA · TRIM'), findsOneWidget);          // 卡片标题
     expect(find.textContaining('估值过高'), findsOneWidget);
     expect(find.textContaining('15'), findsOneWidget);          // 目标仓位
