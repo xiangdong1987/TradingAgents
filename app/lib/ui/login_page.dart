@@ -27,9 +27,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           email: _email.text.trim(), password: _password.text);
     } on FirebaseAuthException catch (e) {
       setState(() => _error = e.message ?? '登录失败');
+    } catch (e) {
+      setState(() => _error = '登录失败: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
   }
 
   @override
