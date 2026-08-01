@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'analysis_detail_page.dart';
+import 'widgets/snapshot_list.dart';
 
 const _suggestionStatusLabels = <String, String>{
   'pending': '待处理', 'accepted': '已采纳', 'dismissed': '已忽略',
@@ -42,21 +43,54 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
   }
 }
 
+/// Wraps a [SnapshotList] with a bump-the-key retry: re-invokes
+/// [streamFactory] to get a fresh stream (a fresh `.snapshots()` subscription
+/// for real Firestore) and forces [SnapshotList] to rebuild from scratch.
+/// Kept as a tiny shared wrapper so the 3 call sites in this file behave
+/// identically on retry.
+class _RetryableStream<T> extends StatefulWidget {
+  const _RetryableStream({
+    super.key,
+    required this.streamFactory,
+    required this.itemBuilder,
+    required this.emptyText,
+  });
+
+  final Stream<List<T>> Function() streamFactory;
+  final Widget Function(BuildContext, List<T>) itemBuilder;
+  final String emptyText;
+
+  @override
+  State<_RetryableStream<T>> createState() => _RetryableStreamState<T>();
+}
+
+class _RetryableStreamState<T> extends State<_RetryableStream<T>> {
+  int _gen = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return SnapshotList<T>(
+      key: ValueKey(_gen),
+      stream: widget.streamFactory(),
+      itemBuilder: widget.itemBuilder,
+      emptyText: widget.emptyText,
+      onRetry: () => setState(() => _gen++),
+    );
+  }
+}
+
 class _AnalysesList extends ConsumerWidget {
   const _AnalysesList();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(repoProvider);
-    return StreamBuilder<List<Analysis>>(
-      stream: repo.recentAnalyses(),
-      builder: (context, snapshot) {
-        final items = snapshot.data ?? const <Analysis>[];
-        if (items.isEmpty) return const Center(child: Text('还没有分析记录'));
-        return ListView(
-          children: [for (final a in items) AnalysisListTile(analysis: a)],
-        );
-      },
+    return _RetryableStream<Analysis>(
+      streamFactory: repo.recentAnalyses,
+      emptyText: '还没有分析记录',
+      itemBuilder: (context, items) => ListView(
+        children: [for (final a in items) AnalysisListTile(analysis: a)],
+      ),
     );
   }
 }
@@ -67,25 +101,22 @@ class _SuggestionsList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(repoProvider);
-    return StreamBuilder<List<Suggestion>>(
-      stream: repo.allSuggestions(),
-      builder: (context, snapshot) {
-        final items = snapshot.data ?? const <Suggestion>[];
-        if (items.isEmpty) return const Center(child: Text('还没有建议记录'));
-        return ListView(
-          children: [
-            for (final s in items)
-              ListTile(
-                title: Text('${s.ticker} · ${s.action.toUpperCase()}'),
-                subtitle: s.outcomePct != null
-                    ? Text('复盘 ${s.outcomePct! >= 0 ? '+' : ''}${s.outcomePct!.toStringAsFixed(1)}%')
-                    : null,
-                trailing: Chip(
-                    label: Text(_suggestionStatusLabels[s.status] ?? s.status)),
-              ),
-          ],
-        );
-      },
+    return _RetryableStream<Suggestion>(
+      streamFactory: repo.allSuggestions,
+      emptyText: '还没有建议记录',
+      itemBuilder: (context, items) => ListView(
+        children: [
+          for (final s in items)
+            ListTile(
+              title: Text('${s.ticker} · ${s.action.toUpperCase()}'),
+              subtitle: s.outcomePct != null
+                  ? Text('复盘 ${s.outcomePct! >= 0 ? '+' : ''}${s.outcomePct!.toStringAsFixed(1)}%')
+                  : null,
+              trailing: Chip(
+                  label: Text(_suggestionStatusLabels[s.status] ?? s.status)),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -118,15 +149,12 @@ class TickerAnalysesPage extends ConsumerWidget {
     final repo = ref.watch(repoProvider);
     return Scaffold(
       appBar: AppBar(title: Text('$ticker 历史分析')),
-      body: StreamBuilder<List<Analysis>>(
-        stream: repo.analysesForTicker(ticker),
-        builder: (context, snapshot) {
-          final items = snapshot.data ?? const <Analysis>[];
-          if (items.isEmpty) return const Center(child: Text('还没有分析记录'));
-          return ListView(
-            children: [for (final a in items) AnalysisListTile(analysis: a)],
-          );
-        },
+      body: _RetryableStream<Analysis>(
+        streamFactory: () => repo.analysesForTicker(ticker),
+        emptyText: '还没有分析记录',
+        itemBuilder: (context, items) => ListView(
+          children: [for (final a in items) AnalysisListTile(analysis: a)],
+        ),
       ),
     );
   }
