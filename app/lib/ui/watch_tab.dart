@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
 import '../providers.dart';
+import 'history_tab.dart';
 
 class WatchTab extends ConsumerWidget {
   const WatchTab({super.key});
@@ -39,6 +40,9 @@ class WatchTab extends ConsumerWidget {
                       child: ListTile(
                         title: Text(w.ticker),
                         subtitle: Text(_quoteLine(quotes[w.ticker])),
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => TickerAnalysesPage(ticker: w.ticker))),
                         leading: ActionChip(
                           label: Text(w.deepFreq),
                           onPressed: () => ref.read(repoProvider).setDeepFreq(

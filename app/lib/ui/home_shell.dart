@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'history_tab.dart';
 import 'portfolio_tab.dart';
 import 'today_tab.dart';
 import 'watch_tab.dart';
@@ -18,7 +19,7 @@ class _HomeShellState extends State<HomeShell> {
     TodayTab(),
     WatchTab(),
     PortfolioTab(),
-    Center(child: Text('历史（建设中）')),
+    HistoryTab(),
   ];
 
   @override
