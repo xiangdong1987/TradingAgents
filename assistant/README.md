@@ -16,12 +16,15 @@ job、按 watchlist 规划到期的日报/深度分析 job、复盘到期建议�
    `~/.tradingagents/firebase-service-account.json`，并执行 `chmod 600 ~/.tradingagents/firebase-service-account.json`
    收紧权限（默认路径无需设置 `TRADINGAGENTS_FIREBASE_CREDENTIALS`；若保存到其他路径，在 `.env` 里设置该变量指向实际文件）。
 
-3. **安全规则**
+3. **安全规则与索引**
 
-   Firestore → Rules，粘贴本仓库 `firebase/firestore.rules` 的内容，并把其中的 `OWNER_UID` 替换成真实 UID：
-   先去 Authentication → Sign-in method 启用 Email/Password，再到 Authentication → Users 里手动 Add user，
-   复制该用户的 UID 填入规则。这一步是为计划二的 Flutter 客户端做准备（客户端会走普通鉴权 + 规则限制）；
-   本 runner 使用 Admin SDK 连接 Firestore，不受这些规则约束。
+   说明：规则与索引已在仓库内（firebase/firestore.rules 已钉死唯一账号 UID；firebase/firestore.indexes.json 覆盖 App 查询所需索引），部署命令：
+
+   ```bash
+   firebase deploy --only firestore --project wealth-assistant-5141d
+   ```
+
+   换账号/换项目时需更新 rules 里的 UID 与 .firebaserc 的项目 ID。
 
 4. **依赖安装**
 
@@ -103,3 +106,7 @@ job、按 watchlist 规划到期的日报/深度分析 job、复盘到期建议�
 
    本系统所有产出（日报、深度分析、交易建议）均为软件自动生成的分析信息，不构成投资建议；相关交易决策与
    执行均由用户自行在其券商完成，本系统不代为下单、不承担投资结果的责任。
+
+## Flutter 客户端（app/）
+
+app/ 是 Flutter 客户端（Android + macOS）；`cd app && flutter run` 运行；换 Firebase 项目时用 `flutterfire configure --project=<id> --platforms=android,macos` 重新生成 lib/firebase_options.dart；测试 `flutter test`。完整部署流程见上述各步骤。

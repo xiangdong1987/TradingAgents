@@ -1,17 +1,22 @@
-# wealth_assistant
+# wealth_assistant Flutter 客户端
 
-A new Flutter project.
+理财助手的 Flutter 客户端（Android + macOS），实时读取 Firestore 展示日报与投资建议。
 
-## Getting Started
+## 快速开始
 
-This project is a starting point for a Flutter application.
+运行客户端：
+```bash
+cd app && flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
+运行测试：
+```bash
+flutter test
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+更换 Firebase 项目时，重新生成配置：
+```bash
+flutterfire configure --project=<wealth-assistant-5141d> --platforms=android,macos
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+完整部署流程与后端 runner 配置详见 [assistant/README.md](../assistant/README.md)。

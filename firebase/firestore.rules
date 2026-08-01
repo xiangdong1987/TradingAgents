@@ -1,7 +1,6 @@
 // firebase/firestore.rules
-// Single-user lock: replace oaItzb3ZpvR9uD7h9qrVoghPFei2 with the UID of the one account you
-// create in Firebase console (Authentication -> Users). The assistant runner
-// uses the Admin SDK and bypasses these rules by design.
+// Locked to the single app account's UID (Firebase console: Authentication -> Users).
+// The assistant runner uses the Admin SDK and bypasses these rules by design.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
