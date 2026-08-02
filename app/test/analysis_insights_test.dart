@@ -240,4 +240,16 @@ void main() {
     expect(toneOf('中性 ➡️'), Tone.neutral);
     expect(toneOf(''), Tone.neutral);
   });
+
+  group('ratingLabelShort', () {
+    test('en uses short scale labels that fit narrow columns', () {
+      expect(ratingLabelShort(1, 'en'), 'Under');
+      expect(ratingLabelShort(3, 'en'), 'Over');
+      expect(ratingLabelShort(0, 'en'), 'Sell');
+    });
+    test('zh keeps the two-char labels', () {
+      expect(ratingLabelShort(1, 'zh'), '减持');
+      expect(ratingLabelShort(3, 'zh'), '增持');
+    });
+  });
 }

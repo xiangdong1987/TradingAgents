@@ -295,14 +295,23 @@ class _RatingBanner extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(idx == null ? analysis.decision : ratingLabel(idx, lang),
-                          key: const Key('dashRating'),
-                          style: TextStyle(
-                              fontSize: 30, fontWeight: FontWeight.w900, color: color)),
-                      Text(analysis.decision,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                            idx == null ? analysis.decision : ratingLabel(idx, lang),
+                            key: const Key('dashRating'),
+                            maxLines: 1,
+                            style: TextStyle(
+                                fontSize: 30, fontWeight: FontWeight.w900, color: color)),
+                      ),
+                      // 英文模式下大标签就是引擎原词，重复的小字副标签不再显示
+                      if (idx == null ||
+                          ratingLabel(idx, lang).toLowerCase() !=
+                              analysis.decision.trim().toLowerCase())
+                        Text(analysis.decision,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     ],
                   ),
                 ),
@@ -323,11 +332,17 @@ class _RatingBanner extends ConsumerWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(t.analysisDay(analysis.tradeDate, _relativeDay(t)),
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(t.analysisDay(analysis.tradeDate, _relativeDay(t)),
+                        maxLines: 1,
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  ),
                 ),
+                const SizedBox(width: 8),
                 _AnalyzeAction(ticker: analysis.ticker, label: t.reAnalyze),
               ],
             ),
@@ -365,14 +380,20 @@ class _RatingScale extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(ratingLabel(i, lang),
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: i == activeIndex ? FontWeight.w800 : FontWeight.w400,
-                        color: i == activeIndex
-                            ? _ratingColors[i]
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      )),
+                  // 短标签 + 单行缩放：英文全称（Underweight）在 1/5 屏宽内必换行
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(ratingLabelShort(i, lang),
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight:
+                              i == activeIndex ? FontWeight.w800 : FontWeight.w400,
+                          color: i == activeIndex
+                              ? _ratingColors[i]
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        )),
+                  ),
                 ],
               ),
             ),

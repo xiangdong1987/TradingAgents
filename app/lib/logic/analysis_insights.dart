@@ -45,6 +45,13 @@ class PriceLevel {
 const ratingLabels = ['卖出', '减持', '持有', '增持', '买入'];
 const ratingLabelsEn = ['Sell', 'Underweight', 'Hold', 'Overweight', 'Buy'];
 
+/// 刻度条等窄空间用的短标签（英文全称在 1/5 屏宽内会换行）。
+const ratingLabelsEnShort = ['Sell', 'Under', 'Hold', 'Over', 'Buy'];
+
+String ratingLabelShort(int index, String lang) => lang == 'en'
+    ? ratingLabelsEnShort[index.clamp(0, 4)]
+    : ratingLabels[index.clamp(0, 4)];
+
 /// Sell/Underweight/Hold/Overweight/Buy → 0..4；容忍加粗、大小写、中文；
 /// 认不出返回 null。
 int? ratingIndex(String decision) {
