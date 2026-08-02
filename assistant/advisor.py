@@ -12,7 +12,7 @@ _PROMPT = """你是一位重视风控的组合经理。引擎对 {ticker} 的最
 {ticker} 当前持仓: {holding_desc}，占组合 {weight:.1f}%。现价 {price}。
 
 请给出一条具体操作建议，只输出 JSON（不要 markdown 代码块）:
-{{"action": "buy|add|trim|sell|hold", "targetWeightPct": <目标仓位百分比数字或null>, "rationale": "<一段简体中文理由>"}}
+{{"action": "buy|add|trim|sell|hold", "targetWeightPct": <目标仓位百分比数字或null>, "rationale": "<一段简体中文理由>", "rationaleEn": "<the same rationale in English>"}}
 """
 
 _DECISION_ACTION = {"BUY": "buy", "SELL": "sell", "HOLD": "hold"}
@@ -27,10 +27,12 @@ def _parse_reply(reply: str, decision: str) -> dict:
                 "action": data.get("action") or _fallback_action(decision),
                 "targetWeightPct": data.get("targetWeightPct"),
                 "rationale": data.get("rationale") or reply,
+                "rationaleEn": data.get("rationaleEn") or "",
             }
         except (json.JSONDecodeError, AttributeError):
             pass
-    return {"action": _fallback_action(decision), "targetWeightPct": None, "rationale": reply}
+    return {"action": _fallback_action(decision), "targetWeightPct": None,
+            "rationale": reply, "rationaleEn": ""}
 
 
 def _fallback_action(decision: str) -> str:
@@ -70,6 +72,7 @@ def generate_suggestion(store, llm, ticker: str, decision: str, analysis_id: str
         "action": parsed["action"],
         "targetWeightPct": parsed["targetWeightPct"],
         "rationale": parsed["rationale"],
+        "rationaleEn": parsed["rationaleEn"],
         "analysisId": analysis_id,
         "status": "pending",
         "createdAt": utc_now_iso(),

@@ -96,6 +96,10 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
         kwargs = {} if fetch_quote is None else {"fetch_quote": fetch_quote}
         return strategy_engine.run_scan(store, job, today, **kwargs)
 
+    def translate_fn(analysis_id: str, sections: list) -> None:
+        from assistant.translate import translate_sections
+        translate_sections(store, llm, analysis_id, sections)
+
     # 1. zombie cleanup
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=ZOMBIE_AFTER_HOURS)).isoformat()
@@ -109,7 +113,8 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     try:
         for job in store.claim_queued_jobs():
             execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn,
-                        refresh_fn=refresh_fn, chat_fn=chat_fn, strategy_fn=strategy_fn)
+                        refresh_fn=refresh_fn, chat_fn=chat_fn,
+                        strategy_fn=strategy_fn, translate_fn=translate_fn)
     except Exception:
         logger.exception("user job execution stage failed")
 
@@ -118,7 +123,8 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
         plan_scheduled_jobs(store, now_et, is_trading_day=is_trading_day)
         for job in store.claim_queued_jobs():
             execute_job(store, job, brief_fn=brief_fn, deep_fn=deep_fn,
-                        refresh_fn=refresh_fn, chat_fn=chat_fn, strategy_fn=strategy_fn)
+                        refresh_fn=refresh_fn, chat_fn=chat_fn,
+                        strategy_fn=strategy_fn, translate_fn=translate_fn)
     except Exception:
         logger.exception("scheduled job planning/execution stage failed")
 

@@ -177,3 +177,21 @@ def test_top_up_quotes_force_overwrites_existing():
     assert quotes["AAPL"]["close"] == 110.0
     assert "EURUSD=X" in quotes
     assert n == 3
+
+
+def test_brief_bilingual_reply_saves_both_languages():
+    store = make_store()
+
+    class BiLLM(FakeLLM):
+        def invoke(self, prompt):
+            self.prompts.append(prompt)
+            return SimpleNamespace(content="===ZH===\n# 日报\n===EN===\n# Brief")
+
+    llm = BiLLM()
+    md = generate_daily_brief(store, llm, "2026-08-01", fetch_quote=ok_quote,
+                              fetch_news=lambda *a: "news")
+    assert md == "# 日报"
+    brief = store.get_brief("2026-08-01")
+    assert brief["markdownZh"] == "# 日报"
+    assert brief["markdownEn"] == "# Brief"
+    assert "===ZH===" in llm.prompts[0]  # prompt 要求双语输出

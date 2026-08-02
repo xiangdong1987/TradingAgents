@@ -16,6 +16,7 @@ class Signal:
     action: str                 # buy | add | trim | sell
     price: float                # 信号价（当日收盘）
     reason: str                 # 中文模板理由，直接展示给用户
+    reason_en: str = ""         # 英文模板理由（App 语言切 EN 时展示）
     shares: float | None = None
     stop: float | None = None
     meta: dict = field(default_factory=dict)

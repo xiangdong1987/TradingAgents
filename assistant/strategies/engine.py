@@ -134,6 +134,7 @@ def run_scan(store, job: dict, today: str, *,
                 doc = {
                     "ticker": ticker, "action": sig.action,
                     "targetWeightPct": None, "rationale": sig.reason,
+                    "rationaleEn": sig.reason_en,
                     "analysisId": "", "source": name, "meta": meta,
                     "status": "pending", "createdAt": utc_now_iso(),
                 }

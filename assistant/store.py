@@ -29,6 +29,8 @@ class Store(Protocol):
     def update_chat(self, cid: str, fields: dict) -> None: ...
     def recent_analyses(self, limit: int = 6) -> list[dict]: ...
     def save_analysis(self, data: dict) -> str: ...
+    def get_analysis(self, analysis_id: str) -> dict | None: ...
+    def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None: ...
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool: ...
     def save_suggestion(self, data: dict) -> str: ...
     def update_suggestion(self, sid: str, fields: dict) -> None: ...
@@ -125,6 +127,16 @@ class MemoryStore:
         aid = self._next_id()
         self._analyses[aid] = dict(data)
         return aid
+
+    def get_analysis(self, analysis_id: str) -> dict | None:
+        doc = self._analyses.get(analysis_id)
+        return dict(doc) if doc is not None else None
+
+    def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None:
+        doc = self._analyses[analysis_id]
+        merged = dict(doc.get("sectionsZh") or {})
+        merged.update(sections)
+        doc["sectionsZh"] = merged
 
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool:
         return any(
@@ -291,6 +303,14 @@ class FirestoreStore:
         ref = self._db.collection("analyses").document()
         ref.set(data)
         return ref.id
+
+    def get_analysis(self, analysis_id: str) -> dict | None:
+        snap = self._db.collection("analyses").document(analysis_id).get()
+        return snap.to_dict() if snap.exists else None
+
+    def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None:
+        self._db.collection("analyses").document(analysis_id).set(
+            {"sectionsZh": sections}, merge=True)
 
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool:
         q = (

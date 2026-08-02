@@ -150,6 +150,9 @@ def _scan_held(ctx: ScanContext, p: dict, n: float, close: float, last: int) -> 
             action="sell", price=close,
             reason=f"海龟止损：收盘 {_fmt(close)} 跌破最新单元入场价 {_fmt(entry)} − 2N"
                    f"（N={_fmt(unit_n)}，止损位 {_fmt(stop_level)}），建议清仓。",
+            reason_en=f"Turtle stop: close {_fmt(close)} fell below latest unit entry "
+                      f"{_fmt(entry)} − 2N (N={_fmt(unit_n)}, stop {_fmt(stop_level)}); "
+                      f"exit the full position.",
             meta={"system": system, "n": round(n, 4), "trigger": "stop"},
         )]
 
@@ -160,6 +163,8 @@ def _scan_held(ctx: ScanContext, p: dict, n: float, close: float, last: int) -> 
             action="sell", price=close,
             reason=f"海龟退出（{system.upper()}）：收盘 {_fmt(close)} 跌破 "
                    f"{sys_cfg['exit']} 日低点 {_fmt(exit_ch)}，趋势结束，建议清仓。",
+            reason_en=f"Turtle exit ({system.upper()}): close {_fmt(close)} broke below the "
+                      f"{sys_cfg['exit']}-day low {_fmt(exit_ch)}; trend over, exit the position.",
             meta={"system": system, "n": round(n, 4), "trigger": "exit",
                   "channel": round(exit_ch, 4)},
         )]
@@ -174,6 +179,9 @@ def _scan_held(ctx: ScanContext, p: dict, n: float, close: float, last: int) -> 
                 reason=f"海龟加仓（第 {len(ctx.units) + 1}/{p['maxUnits']} 单元）：价格自上一"
                        f"单元 {_fmt(entry)} 上行超 ½N，按 {p['riskPct']}% 风险建议加"
                        f" {shares} 股，止损上移至 {_fmt(stop)}（本单元 entry−2N）。",
+                reason_en=f"Turtle pyramid (unit {len(ctx.units) + 1}/{p['maxUnits']}): price up "
+                          f"over ½N from last unit {_fmt(entry)}; add {shares} shares at "
+                          f"{p['riskPct']}% risk, stop raised to {_fmt(stop)} (unit entry − 2N).",
                 meta={"system": system, "n": round(n, 4), "trigger": "pyramid",
                       "entry": round(close, 4)},
             )]
@@ -192,6 +200,9 @@ def _scan_entry(ctx: ScanContext, p: dict, n: float, close: float, last: int) ->
             reason=f"海龟入场（{system.upper()}）：收盘 {_fmt(close)} 突破 {entry_n} 日"
                    f"高点 {_fmt(ch)}。N={_fmt(n)}，按 {p['riskPct']}% 风险建议买入"
                    f" {shares} 股，止损 {_fmt(stop)}（entry−2N）。",
+            reason_en=f"Turtle entry ({system.upper()}): close {_fmt(close)} broke above the "
+                      f"{entry_n}-day high {_fmt(ch)}. N={_fmt(n)}; buy {shares} shares at "
+                      f"{p['riskPct']}% risk, stop {_fmt(stop)} (entry − 2N).",
             meta={"system": system, "n": round(n, 4), "trigger": "breakout",
                   "channel": round(ch, 4), "entry": round(close, 4)},
         )

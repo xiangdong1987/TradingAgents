@@ -117,3 +117,31 @@ def test_strategy_scan_without_wiring_fails_gracefully():
     execute_job(s, {"id": jid, **s.get_job(jid)}, brief_fn=None, deep_fn=None)
     doc = s.get_job(jid)
     assert doc["status"] == "failed" and "strategy_fn" in doc["error"]
+
+
+def test_translate_job_routes_to_translate_fn():
+    from assistant.jobs import execute_job
+    from assistant.store import MemoryStore
+
+    store = MemoryStore()
+    jid = store.add_job({"type": "translate", "analysisId": "a1",
+                         "sections": ["market"], "status": "queued",
+                         "createdAt": "x"})
+    calls = []
+    job = {"id": jid, "type": "translate", "analysisId": "a1", "sections": ["market"]}
+    execute_job(store, job, brief_fn=None, deep_fn=None,
+                translate_fn=lambda aid, secs: calls.append((aid, secs)))
+    assert calls == [("a1", ["market"])]
+    assert store.get_job(jid)["status"] == "done"
+
+
+def test_translate_job_without_fn_fails_job():
+    from assistant.jobs import execute_job
+    from assistant.store import MemoryStore
+
+    store = MemoryStore()
+    jid = store.add_job({"type": "translate", "analysisId": "a1",
+                         "status": "queued", "createdAt": "x"})
+    job = {"id": jid, "type": "translate", "analysisId": "a1"}
+    execute_job(store, job, brief_fn=None, deep_fn=None)
+    assert store.get_job(jid)["status"] == "failed"

@@ -59,3 +59,23 @@ def test_answer_chat_failure_marks_failed():
     with pytest.raises(RuntimeError):
         answer_chat(s, Boom(), cid, "2026-08-01")
     assert s.get_chat(cid)["status"] == "failed"
+
+
+def test_answer_chat_bilingual_saves_answer_en():
+    from types import SimpleNamespace
+    from assistant.chat import answer_chat
+    from assistant.store import MemoryStore
+
+    store = MemoryStore()
+    cid = store.add_chat({"question": "KO 还是 ISP?", "status": "pending",
+                           "createdAt": "2026-08-01T00:00:00+00:00"})
+
+    class BiLLM:
+        def invoke(self, prompt):
+            return SimpleNamespace(content="===ZH===\n买KO\n===EN===\nBuy KO")
+
+    answer_chat(store, BiLLM(), cid, "2026-08-01")
+    chat = store.get_chat(cid)
+    assert chat["answer"] == "买KO"
+    assert chat["answerEn"] == "Buy KO"
+    assert chat["status"] == "answered"

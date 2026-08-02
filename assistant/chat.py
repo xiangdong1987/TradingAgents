@@ -9,15 +9,17 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+from assistant.lang import BILINGUAL_INSTRUCTION, split_bilingual
 from assistant.store import utc_now_iso
 
 logger = logging.getLogger(__name__)
 
 _PROMPT = """你是用户的私人投资研究助手。基于下面的真实组合快照回答用户的问题：
-- 用简体中文，简洁直接，先给结论再给理由；
+- 简洁直接，先给结论再给理由；
 - 必须结合当前持仓（集中度、现金水位、已有仓位）评估可行性；
 - 若信息不足请明说缺什么；
-- 结尾用一句话提醒：以上是研究参考，交易请自行决策。
+- 结尾用一句话提醒：以上是研究参考，交易请自行决策（英文版用对应英文表述）。
+{bilingual}
 
 # 组合快照
 {context}
@@ -73,9 +75,12 @@ def answer_chat(store, llm, chat_id: str, today: str) -> None:
         raise ValueError(f"chat {chat_id} not found")
     try:
         context = build_context(store, today)
-        answer = llm.invoke(_PROMPT.format(context=context,
-                                           question=chat["question"])).content
-        store.update_chat(chat_id, {"answer": answer, "status": "answered",
+        reply = llm.invoke(_PROMPT.format(context=context,
+                                          bilingual=BILINGUAL_INSTRUCTION,
+                                          question=chat["question"])).content
+        zh, en = split_bilingual(reply)
+        store.update_chat(chat_id, {"answer": zh, "answerEn": en,
+                                    "status": "answered",
                                     "answeredAt": utc_now_iso()})
     except Exception as exc:
         store.update_chat(chat_id, {"status": "failed", "error": str(exc),

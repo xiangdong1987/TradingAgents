@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from assistant.lang import BILINGUAL_INSTRUCTION, split_bilingual
 from assistant.quotes import get_quote
 from assistant.store import utc_now_iso
 
-_PROMPT_TEMPLATE = """你是一位谨慎的投资研究助理。基于以下数据写一份简体中文的每日投资日报（Markdown）。
+_PROMPT_TEMPLATE = """你是一位谨慎的投资研究助理。基于以下数据写一份每日投资日报（Markdown）。
 结构：## 组合概览（含现金与浮动盈亏）→ ## 个股点评（每只一两句）→ ## 值得注意（异动、风险，若某只股值得做一次深度多agent分析请点名）。
 只依据给出的数据，不要编造数字。日期：{today}
+{bilingual}
 
 # 组合
 现金: {cash} {currency}
@@ -68,21 +70,23 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
 
     prompt = _PROMPT_TEMPLATE.format(
         today=today,
+        bilingual=BILINGUAL_INSTRUCTION,
         cash=meta.get("cash", 0.0),
         currency=meta.get("currency", "USD"),
         positions_block="\n".join(position_parts) or "（无持仓）",
         tickers_block="\n\n".join(ticker_parts) or "（自选与持仓均为空）",
     )
     _add_fx_if_needed(quotes_map, tickers, fetch_quote)
-    markdown = llm.invoke(prompt).content
+    zh, en = split_bilingual(llm.invoke(prompt).content)
     store.save_brief(today, {
         "date": today,
-        "markdownZh": markdown,
+        "markdownZh": zh,
+        "markdownEn": en,
         "tickers": tickers,
         "createdAt": utc_now_iso(),
         "quotes": quotes_map,
     })
-    return markdown
+    return zh
 
 
 def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
