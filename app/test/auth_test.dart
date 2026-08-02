@@ -65,13 +65,54 @@ void main() {
     expect(find.byType(LoginPage), findsOneWidget);
   });
 
-  testWidgets('logout button signs out back to LoginPage', (tester) async {
+  testWidgets('logout asks for confirmation before signing out', (tester) async {
     final auth = MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u1'));
     await tester.pumpWidget(_app(auth, FakeFirebaseFirestore()));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logoutButton')));
     await tester.pumpAndSettle();
+    // 只弹确认框，此时还没退出
+    expect(find.byKey(const Key('logoutConfirm')), findsOneWidget);
+    expect(find.byType(LoginPage), findsNothing);
+    await tester.tap(find.byKey(const Key('logoutConfirm')));
+    await tester.pumpAndSettle();
     expect(find.byType(LoginPage), findsOneWidget);
+  });
+
+  testWidgets('cancelling the logout dialog keeps the session', (tester) async {
+    final auth = MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u1'));
+    await tester.pumpWidget(_app(auth, FakeFirebaseFirestore()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logoutButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logoutCancel')));
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsNothing);   // 仍然登录着
+    expect(find.text('今日'), findsOneWidget);
+  });
+
+  testWidgets('credential fields carry autofill hints for the password manager',
+      (tester) async {
+    final auth = MockFirebaseAuth(signedIn: false);
+    await tester.pumpWidget(_app(auth, FakeFirebaseFirestore()));
+    await tester.pumpAndSettle();
+    // 系统密码管理器靠这两个 hint 认出「这是登录表单」，缺了就不会提示保存。
+    expect(find.byType(AutofillGroup), findsOneWidget);
+    final email = tester.widget<TextField>(find.byKey(const Key('email')));
+    final password = tester.widget<TextField>(find.byKey(const Key('password')));
+    expect(email.autofillHints, contains(AutofillHints.username));
+    expect(password.autofillHints, contains(AutofillHints.password));
+  });
+
+  testWidgets('submitting the password field signs in', (tester) async {
+    final auth = MockFirebaseAuth(signedIn: false);
+    await tester.pumpWidget(_app(auth, FakeFirebaseFirestore()));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('email')), 'me@x.com');
+    await tester.enterText(find.byKey(const Key('password')), 'secret123');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsNothing);
   });
 
   testWidgets('login shows generic error and stays on LoginPage for non-FirebaseAuthException',

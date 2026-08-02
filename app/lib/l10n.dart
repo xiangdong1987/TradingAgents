@@ -34,6 +34,10 @@ class L10n {
   String get signInFailed => isZh ? '登录失败' : 'Sign-in failed';
   String signInError(Object e) => isZh ? '登录失败: $e' : 'Sign-in failed: $e';
   String authError(Object e) => isZh ? '认证出错: $e' : 'Auth error: $e';
+  String get signOut => isZh ? '退出登录' : 'Sign out';
+  String get signOutConfirm => isZh
+      ? '确定退出登录吗？下次进来需要重新输入密码。'
+      : 'Sign out? You will need to enter your password again next time.';
 
   // ---- 今日 tab ----
   String get totalValue => isZh ? '总市值' : 'Total value';

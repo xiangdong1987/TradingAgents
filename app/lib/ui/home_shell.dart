@@ -57,7 +57,30 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           IconButton(
             key: const Key('logoutButton'),
             icon: const Icon(Icons.logout),
-            onPressed: () => ref.read(firebaseAuthProvider).signOut(),
+            tooltip: t.signOut,
+            // 误触代价高（要重新输密码），所以先确认再退。
+            onPressed: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: Text(t.signOut),
+                  content: Text(t.signOutConfirm),
+                  actions: [
+                    TextButton(
+                        key: const Key('logoutCancel'),
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        child: Text(t.cancel)),
+                    FilledButton(
+                        key: const Key('logoutConfirm'),
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        child: Text(t.signOut)),
+                  ],
+                ),
+              );
+              if (confirmed ?? false) {
+                await ref.read(firebaseAuthProvider).signOut();
+              }
+            },
           ),
         ],
       ),
