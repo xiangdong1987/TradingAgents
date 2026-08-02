@@ -23,10 +23,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         return macos;
       case TargetPlatform.windows:
@@ -70,5 +67,15 @@ class DefaultFirebaseOptions {
     authDomain: 'wealth-assistant-5141d.firebaseapp.com',
     storageBucket: 'wealth-assistant-5141d.firebasestorage.app',
     measurementId: 'G-3F2V169TM8',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyDcQv5NEDoC4uCciu8d_0I771a11mU_O1U',
+    appId: '1:130608717195:ios:eecf485f3f8f99488a638e',
+    messagingSenderId: '130608717195',
+    projectId: 'wealth-assistant-5141d',
+    storageBucket: 'wealth-assistant-5141d.firebasestorage.app',
+    iosClientId: '130608717195-upchobnu44eoaicm3o2hkin5ksqg3tfg.apps.googleusercontent.com',
+    iosBundleId: 'com.wealthassistant.wealthAssistant',
   );
 }
