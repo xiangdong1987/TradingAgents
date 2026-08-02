@@ -31,6 +31,8 @@ class Store(Protocol):
     def save_analysis(self, data: dict) -> str: ...
     def get_analysis(self, analysis_id: str) -> dict | None: ...
     def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None: ...
+    def all_analyses(self) -> list[dict]: ...
+    def merge_analysis_fields(self, analysis_id: str, fields: dict) -> None: ...
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool: ...
     def save_suggestion(self, data: dict) -> str: ...
     def update_suggestion(self, sid: str, fields: dict) -> None: ...
@@ -137,6 +139,20 @@ class MemoryStore:
         merged = dict(doc.get("sectionsZh") or {})
         merged.update(sections)
         doc["sectionsZh"] = merged
+
+    def all_analyses(self) -> list[dict]:
+        return [{"id": aid, **doc} for aid, doc in self._analyses.items()]
+
+    def merge_analysis_fields(self, analysis_id: str, fields: dict) -> None:
+        """Firestore set(merge=True) 语义：map 字段按 key 深合并。"""
+        doc = self._analyses[analysis_id]
+        for k, v in fields.items():
+            if isinstance(v, dict):
+                merged = dict(doc.get(k) or {})
+                merged.update(v)
+                doc[k] = merged
+            else:
+                doc[k] = v
 
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool:
         return any(
@@ -311,6 +327,13 @@ class FirestoreStore:
     def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None:
         self._db.collection("analyses").document(analysis_id).set(
             {"sectionsZh": sections}, merge=True)
+
+    def all_analyses(self) -> list[dict]:
+        return [{"id": d.id, **d.to_dict()}
+                for d in self._db.collection("analyses").stream()]
+
+    def merge_analysis_fields(self, analysis_id: str, fields: dict) -> None:
+        self._db.collection("analyses").document(analysis_id).set(fields, merge=True)
 
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool:
         q = (
