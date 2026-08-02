@@ -6,6 +6,7 @@ import 'package:table_calendar/table_calendar.dart';
 // Markdown 渲染 import 按 Task 1 选定的包调整：
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import '../l10n.dart';
 import '../logic/portfolio_math.dart';
 import '../models/models.dart';
 import '../providers.dart';
@@ -18,6 +19,8 @@ class TodayTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
     final brief = ref.watch(latestBriefProvider);
     final suggestions = ref.watch(pendingSuggestionsProvider);
     final jobs = ref.watch(activeJobsProvider);
@@ -40,17 +43,16 @@ class TodayTab extends ConsumerWidget {
         // 4. 日报默认收起，点开展阅
         brief.when(
           data: (b) => b == null
-              ? const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text('还没有日报。runner 会在交易日收盘后生成第一份。',
-                      textAlign: TextAlign.center),
+              ? Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(t.noBriefYet, textAlign: TextAlign.center),
                 )
               : Card(
                   margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   clipBehavior: Clip.antiAlias,
                   child: ExpansionTile(
                     key: const Key('briefTile'),
-                    title: Text('每日投资日报 · ${b.date}',
+                    title: Text(t.dailyBriefTitle(b.date),
                         style: const TextStyle(
                             fontSize: 14, fontWeight: FontWeight.w700)),
                     leading: const Icon(Icons.article_outlined, size: 18),
@@ -58,7 +60,7 @@ class TodayTab extends ConsumerWidget {
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: MarkdownBody(data: b.markdownZh),
+                        child: MarkdownBody(data: b.markdownFor(lang)),
                       ),
                     ],
                   ),
@@ -73,7 +75,8 @@ class TodayTab extends ConsumerWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text('待处理建议', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(t.pendingSuggestions,
+                    style: Theme.of(context).textTheme.titleMedium),
               ),
               const _StrategyScanAction(),
             ],
@@ -88,19 +91,19 @@ class TodayTab extends ConsumerWidget {
                     await ref.read(repoProvider).resolveSuggestion(s.id, accepted: false);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('已忽略')));
+                          .showSnackBar(SnackBar(content: Text(t.dismissed)));
                     }
                   },
                   onAccept: () => showDialog<void>(
                     context: context,
-                    builder: (_) => _AcceptDialog(suggestion: s, ref: ref),
+                    builder: (_) => _AcceptDialog(suggestion: s),
                   ),
                 ),
             ],
           AsyncData() => [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                child: Text('暂无待处理建议',
+                child: Text(t.noPendingSuggestions,
                     style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(context).colorScheme.onSurfaceVariant)),
@@ -121,12 +124,13 @@ class _StrategyScanAction extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final jobs = ref.watch(activeJobsProvider).value ?? const <Job>[];
     final scanning = jobs.any((j) => j.type == 'strategy_scan');
     if (scanning) {
       return Chip(
         visualDensity: VisualDensity.compact,
-        label: const Text('🐢 扫描中', style: TextStyle(fontSize: 12)),
+        label: Text(t.turtleScanning, style: const TextStyle(fontSize: 12)),
         side: BorderSide(color: Theme.of(context).colorScheme.onSurfaceVariant),
         backgroundColor: Colors.transparent,
       );
@@ -137,11 +141,11 @@ class _StrategyScanAction extends ConsumerWidget {
       onPressed: () async {
         await ref.read(repoProvider).enqueueStrategyScan();
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('海龟扫描已排队，跑完建议会出现在这里')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(t.turtleScanQueued)));
         }
       },
-      child: const Text('🐢 海龟扫描'),
+      child: Text(t.turtleScan),
     );
   }
 }
@@ -149,12 +153,13 @@ class _StrategyScanAction extends ConsumerWidget {
 /// Apple-Stocks-style hero overview: the EUR total owns a full line in large
 /// type (FittedBox so long amounts scale down instead of wrapping on phones),
 /// with pnl and cash demoted to a small secondary row underneath.
-class _OverviewBar extends StatelessWidget {
+class _OverviewBar extends ConsumerWidget {
   const _OverviewBar({required this.summary});
   final PortfolioSummary summary;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final grey = Theme.of(context).colorScheme.onSurfaceVariant;
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -163,7 +168,7 @@ class _OverviewBar extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('总市值', style: TextStyle(fontSize: 12, color: grey)),
+            Text(t.totalValue, style: TextStyle(fontSize: 12, color: grey)),
             const SizedBox(height: 2),
             FittedBox(
               fit: BoxFit.scaleDown,
@@ -177,7 +182,7 @@ class _OverviewBar extends StatelessWidget {
             Row(
               children: [
                 _MiniStat(
-                  label: '浮动盈亏',
+                  label: t.pnlFloating,
                   value: summary.pnlPct == null
                       ? const Text('—')
                       : Text(
@@ -190,7 +195,7 @@ class _OverviewBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 28),
                 _MiniStat(
-                  label: '现金',
+                  label: t.cash,
                   value: summary.cashEur == null
                       ? const Text('—')
                       : MoneyText(summary.cashEur!,
@@ -226,16 +231,15 @@ class _MiniStat extends StatelessWidget {
   }
 }
 
-class _AcceptDialog extends StatefulWidget {
-  const _AcceptDialog({required this.suggestion, required this.ref});
+class _AcceptDialog extends ConsumerStatefulWidget {
+  const _AcceptDialog({required this.suggestion});
   final Suggestion suggestion;
-  final WidgetRef ref;
 
   @override
-  State<_AcceptDialog> createState() => _AcceptDialogState();
+  ConsumerState<_AcceptDialog> createState() => _AcceptDialogState();
 }
 
-class _AcceptDialogState extends State<_AcceptDialog> {
+class _AcceptDialogState extends ConsumerState<_AcceptDialog> {
   final _shares = TextEditingController();
   final _price = TextEditingController();
 
@@ -252,7 +256,7 @@ class _AcceptDialogState extends State<_AcceptDialog> {
       };
 
   Future<void> _accept({required bool withTrade}) async {
-    final repo = widget.ref.read(repoProvider);
+    final repo = ref.read(repoProvider);
     if (withTrade) {
       final shares = double.tryParse(_shares.text);
       final price = double.tryParse(_price.text);
@@ -270,41 +274,42 @@ class _AcceptDialogState extends State<_AcceptDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
     final s = widget.suggestion;
     return AlertDialog(
-      title: Text('采纳建议：${s.ticker} ${s.action.toUpperCase()}'),
+      title: Text(t.acceptTitle(s.ticker, s.action.toUpperCase())),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('可顺手记录实际成交（可选）：'),
+          Text(t.recordTradeHint),
           TextField(key: const Key('tradeShares'), controller: _shares,
-              decoration: const InputDecoration(labelText: '股数'),
+              decoration: InputDecoration(labelText: t.shares),
               keyboardType: TextInputType.number),
           TextField(key: const Key('tradePrice'), controller: _price,
-              decoration: const InputDecoration(labelText: '成交价'),
+              decoration: InputDecoration(labelText: t.priceLabel),
               keyboardType: TextInputType.number),
         ],
       ),
       actions: [
         TextButton(key: const Key('acceptOnly'),
-            onPressed: () => _accept(withTrade: false), child: const Text('仅标记采纳')),
+            onPressed: () => _accept(withTrade: false), child: Text(t.acceptOnly)),
         FilledButton(key: const Key('acceptWithTrade'),
-            onPressed: () => _accept(withTrade: true), child: const Text('记录成交并采纳')),
+            onPressed: () => _accept(withTrade: true), child: Text(t.acceptWithTrade)),
       ],
     );
   }
 }
 
 /// 财报/分红月历（真实日历组件）：有事件的日期打点，点选看当日明细。
-class _AgendaCard extends StatefulWidget {
+class _AgendaCard extends ConsumerStatefulWidget {
   const _AgendaCard({required this.events});
   final List<CalendarEvent> events;
 
   @override
-  State<_AgendaCard> createState() => _AgendaCardState();
+  ConsumerState<_AgendaCard> createState() => _AgendaCardState();
 }
 
-class _AgendaCardState extends State<_AgendaCard> {
+class _AgendaCardState extends ConsumerState<_AgendaCard> {
   DateTime _focused = DateTime.now();
   DateTime _selected = DateTime.now();
 
@@ -313,12 +318,21 @@ class _AgendaCardState extends State<_AgendaCard> {
     return [for (final e in widget.events) if (e.date == key) e];
   }
 
+  /// 事件类型展示名走 l10n（模型的 typeLabel getter 保留但 UI 不再使用）。
+  String _typeLabel(CalendarEvent e, L10n t) => switch (e.type) {
+        'earnings' => t.evEarnings,
+        'exDividend' => t.evExDividend,
+        'dividendPay' => t.evDividendPay,
+        _ => e.type,
+      };
+
   @override
   Widget build(BuildContext context) {
     if (widget.events.isEmpty) return const SizedBox.shrink();
+    final t = ref.watch(l10nProvider);
     final grey = Theme.of(context).colorScheme.onSurfaceVariant;
     final selectedEvents = _eventsOn(_selected);
-    const dow = ['一', '二', '三', '四', '五', '六', '日'];
+    final dow = [t.dowMon, t.dowTue, t.dowWed, t.dowThu, t.dowFri, t.dowSat, t.dowSun];
 
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -367,7 +381,7 @@ class _AgendaCardState extends State<_AgendaCard> {
                     child: Text(e.ticker,
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                   ),
-                  Text(e.typeLabel, style: TextStyle(fontSize: 12, color: grey)),
+                  Text(_typeLabel(e, t), style: TextStyle(fontSize: 12, color: grey)),
                 ]),
               ),
           ],
@@ -379,16 +393,16 @@ class _AgendaCardState extends State<_AgendaCard> {
 
 /// 任务与 runner 状态卡：显示 watch 进程在线/离线、每个进行中任务的
 /// 状态与已运行时长；30 秒自刷新时长与在线判定。
-class _ActiveJobsCard extends StatefulWidget {
+class _ActiveJobsCard extends ConsumerStatefulWidget {
   const _ActiveJobsCard({required this.jobs, required this.runner});
   final List<Job> jobs;
   final RunnerStatus? runner;
 
   @override
-  State<_ActiveJobsCard> createState() => _ActiveJobsCardState();
+  ConsumerState<_ActiveJobsCard> createState() => _ActiveJobsCardState();
 }
 
-class _ActiveJobsCardState extends State<_ActiveJobsCard> {
+class _ActiveJobsCardState extends ConsumerState<_ActiveJobsCard> {
   Timer? _ticker;
 
   @override
@@ -405,22 +419,23 @@ class _ActiveJobsCardState extends State<_ActiveJobsCard> {
     super.dispose();
   }
 
-  String _jobLabel(Job j) => switch (j.type) {
-        'deep_analysis' => '${j.ticker} 深度分析',
-        'refresh_quotes' => '行情刷新',
-        'chat' => '问答回复',
-        'strategy_scan' => '策略扫描',
-        _ => '日报生成',
+  String _jobLabel(Job j, L10n t) => switch (j.type) {
+        'deep_analysis' => t.jobDeepAnalysis(j.ticker ?? ''),
+        'refresh_quotes' => t.jobRefreshQuotes,
+        'chat' => t.jobChat,
+        'strategy_scan' => t.strategyScan,
+        _ => t.jobDailyBrief,
       };
 
-  String _elapsed(Job j, DateTime now) {
+  String _elapsed(Job j, DateTime now, L10n t) {
     final from = j.startedAt ?? j.createdAt;
     final mins = now.toUtc().difference(from).inMinutes;
-    return mins < 1 ? '刚开始' : '已 $mins 分钟';
+    return mins < 1 ? t.justStarted : t.jobElapsed(mins);
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
     final now = DateTime.now();
     final grey = Theme.of(context).colorScheme.onSurfaceVariant;
     final runner = widget.runner;
@@ -430,12 +445,12 @@ class _ActiveJobsCardState extends State<_ActiveJobsCard> {
 
     String runnerText;
     if (alive) {
-      runnerText = 'Runner 在线';
+      runnerText = t.runnerOnline;
     } else if (runner?.lastSeenAt != null) {
       final mins = now.toUtc().difference(runner!.lastSeenAt!).inMinutes;
-      runnerText = 'Runner 离线 · 最后活跃 $mins 分钟前';
+      runnerText = t.runnerOffline(mins);
     } else {
-      runnerText = 'Runner 未启动';
+      runnerText = t.runnerNotStarted;
     }
 
     return Card(
@@ -456,7 +471,7 @@ class _ActiveJobsCardState extends State<_ActiveJobsCard> {
               if (!alive && jobs.isNotEmpty) ...[
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text('任务将等待 runner 启动',
+                  child: Text(t.jobWaitsForRunner,
                       style: TextStyle(fontSize: 11, color: pnlColor(-1)),
                       overflow: TextOverflow.ellipsis),
                 ),
@@ -471,11 +486,11 @@ class _ActiveJobsCardState extends State<_ActiveJobsCard> {
                     size: 15, color: grey),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(_jobLabel(j),
+                  child: Text(_jobLabel(j, t),
                       style: const TextStyle(
                           fontSize: 13, fontWeight: FontWeight.w600)),
                 ),
-                Text(j.status == 'queued' ? '排队中' : _elapsed(j, now),
+                Text(j.status == 'queued' ? t.jobQueued : _elapsed(j, now, t),
                     style: TextStyle(fontSize: 12, color: grey)),
               ]),
             ),

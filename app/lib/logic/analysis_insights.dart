@@ -43,6 +43,7 @@ class PriceLevel {
 // ---------------------------------------------------------------------------
 
 const ratingLabels = ['卖出', '减持', '持有', '增持', '买入'];
+const ratingLabelsEn = ['Sell', 'Underweight', 'Hold', 'Overweight', 'Buy'];
 
 /// Sell/Underweight/Hold/Overweight/Buy → 0..4；容忍加粗、大小写、中文；
 /// 认不出返回 null。
@@ -57,6 +58,10 @@ int? ratingIndex(String decision) {
 }
 
 String ratingZh(int index) => ratingLabels[index.clamp(0, 4)];
+
+/// 评级档位标签：zh 用中文档位，en 用引擎原词（Sell…Buy）。lang 由 UI 传入。
+String ratingLabel(int index, String lang) =>
+    lang == 'en' ? ratingLabelsEn[index.clamp(0, 4)] : ratingLabels[index.clamp(0, 4)];
 
 // ---------------------------------------------------------------------------
 // **Key**: value 解析
@@ -223,6 +228,24 @@ const _levelAliases = <String, List<String>>{
   '布林中轨': ['布林中轨'],
   '布林下轨': ['布林下轨'],
 };
+
+/// [PriceLevel.label] 的英文短标签；label 本身是解析器的规范中文键（供
+/// 颜色/去重等逻辑用），展示层经 [levelLabel] 按 lang 转换。
+const _levelLabelsEn = <String, String>{
+  '现价': 'Price',
+  '10日线': '10D MA',
+  '50日线': '50D MA',
+  '200日线': '200D MA',
+  '布林上轨': 'BB upper',
+  '布林中轨': 'BB mid',
+  '布林下轨': 'BB lower',
+  '入场': 'Entry',
+  '止损': 'Stop',
+};
+
+/// 价位标尺标签的语言感知展示名：zh 用规范键本身，en 用英文短标签。
+String levelLabel(String label, String lang) =>
+    lang == 'en' ? (_levelLabelsEn[label] ?? label) : label;
 
 double? _firstNumber(String s) {
   final m = RegExp(r'(\d[\d,]*\.?\d*)').firstMatch(s);

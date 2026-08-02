@@ -7,10 +7,6 @@ import 'analysis_detail_page.dart';
 import 'widgets/pnl.dart';
 import 'widgets/snapshot_list.dart';
 
-const _suggestionStatusLabels = <String, String>{
-  'pending': '待处理', 'accepted': '已采纳', 'dismissed': '已忽略',
-};
-
 class HistoryTab extends ConsumerStatefulWidget {
   const HistoryTab({super.key});
 
@@ -23,14 +19,15 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'analyses', label: Text('分析')),
-              ButtonSegment(value: 'suggestions', label: Text('建议')),
+            segments: [
+              ButtonSegment(value: 'analyses', label: Text(t.analysesSection)),
+              ButtonSegment(value: 'suggestions', label: Text(t.suggestionsSection)),
             ],
             selected: {_segment},
             onSelectionChanged: (s) => setState(() => _segment = s.first),
@@ -85,10 +82,11 @@ class _AnalysesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final repo = ref.watch(repoProvider);
     return _RetryableStream<Analysis>(
       streamFactory: repo.recentAnalyses,
-      emptyText: '还没有分析记录',
+      emptyText: t.noAnalyses,
       itemBuilder: (context, items) => ListView(
         children: [for (final a in items) AnalysisListTile(analysis: a)],
       ),
@@ -101,10 +99,11 @@ class _SuggestionsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final repo = ref.watch(repoProvider);
     return _RetryableStream<Suggestion>(
       streamFactory: repo.allSuggestions,
-      emptyText: '还没有建议记录',
+      emptyText: t.noSuggestionHistory,
       itemBuilder: (context, items) => ListView(
         children: [
           for (final s in items)
@@ -126,9 +125,8 @@ class _SuggestionsList extends ConsumerWidget {
 }
 
 /// Outline-style status chip for a suggestion's lifecycle state:
-/// accepted → green outline, dismissed → gray, pending → amber. Copy is
-/// unchanged (已采纳/已忽略/待处理).
-class _StatusChip extends StatelessWidget {
+/// accepted → green outline, dismissed → gray, pending → amber.
+class _StatusChip extends ConsumerWidget {
   const _StatusChip({required this.status});
   final String status;
 
@@ -139,10 +137,17 @@ class _StatusChip extends StatelessWidget {
       };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final label = switch (status) {
+      'pending' => t.pendingStatus,
+      'accepted' => t.accepted,
+      'dismissed' => t.dismissed,
+      _ => status,
+    };
     final color = _color;
     return Chip(
-      label: Text(_suggestionStatusLabels[status] ?? status, style: TextStyle(color: color)),
+      label: Text(label, style: TextStyle(color: color)),
       backgroundColor: Colors.transparent,
       side: BorderSide(color: color),
     );
@@ -174,12 +179,13 @@ class TickerAnalysesPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final repo = ref.watch(repoProvider);
     return Scaffold(
-      appBar: AppBar(title: Text('$ticker 历史分析')),
+      appBar: AppBar(title: Text(t.historyOf(ticker))),
       body: _RetryableStream<Analysis>(
         streamFactory: () => repo.analysesForTicker(ticker),
-        emptyText: '还没有分析记录',
+        emptyText: t.noAnalyses,
         itemBuilder: (context, items) => ListView(
           children: [for (final a in items) AnalysisListTile(analysis: a)],
         ),

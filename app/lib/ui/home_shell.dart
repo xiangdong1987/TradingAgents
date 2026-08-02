@@ -28,19 +28,29 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('理财助手'),
+        title: Text(t.appTitle),
         actions: [
+          // 语言切换：按钮显示将要切去的语言
+          TextButton(
+            key: const Key('langToggle'),
+            onPressed: () =>
+                ref.read(repoProvider).setLang(lang == 'zh' ? 'en' : 'zh'),
+            child: Text(lang == 'zh' ? 'EN' : '中',
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
           IconButton(
             key: const Key('refreshQuotes'),
             icon: const Icon(Icons.refresh),
-            tooltip: '刷新行情',
+            tooltip: t.refreshQuotes,
             onPressed: () async {
               await ref.read(repoProvider).enqueueQuotesRefresh();
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('已请求刷新行情，处理完成后自动更新')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(t.quoteRefreshRequested)));
               }
             },
           ),
@@ -55,12 +65,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.today), label: '今日'),
-          NavigationDestination(icon: Icon(Icons.star_outline), label: '自选'),
-          NavigationDestination(icon: Icon(Icons.pie_chart_outline), label: '持仓'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: '问答'),
-          NavigationDestination(icon: Icon(Icons.history), label: '历史'),
+        destinations: [
+          NavigationDestination(icon: const Icon(Icons.today), label: t.tabToday),
+          NavigationDestination(icon: const Icon(Icons.star_outline), label: t.tabWatch),
+          NavigationDestination(
+              icon: const Icon(Icons.pie_chart_outline), label: t.tabPortfolio),
+          NavigationDestination(
+              icon: const Icon(Icons.chat_bubble_outline), label: t.tabChat),
+          NavigationDestination(icon: const Icon(Icons.history), label: t.tabHistory),
         ],
       ),
     );

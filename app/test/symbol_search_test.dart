@@ -1,6 +1,9 @@
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wealth_assistant/data/symbol_search.dart';
+import 'package:wealth_assistant/providers.dart';
 import 'package:wealth_assistant/ui/widgets/ticker_field.dart';
 
 const _csv = '''
@@ -53,9 +56,13 @@ void main() {
       (tester) async {
     SymbolIndex.instance = index; // 预置索引，避免测试读资产
     final controller = TextEditingController();
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: TickerField(fieldKey: const Key('t'), controller: controller),
+    // TickerField 缺省 label 走 l10nProvider，需要 ProviderScope + fake firestore。
+    await tester.pumpWidget(ProviderScope(
+      overrides: [firestoreProvider.overrideWithValue(FakeFirebaseFirestore())],
+      child: MaterialApp(
+        home: Scaffold(
+          body: TickerField(fieldKey: const Key('t'), controller: controller),
+        ),
       ),
     ));
     await tester.enterText(find.byKey(const Key('t')), '苹果');

@@ -18,6 +18,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _busy = false;
 
   Future<void> _signIn() async {
+    final t = ref.read(l10nProvider);
     setState(() {
       _busy = true;
       _error = null;
@@ -25,10 +26,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     try {
       await ref.read(firebaseAuthProvider).signInWithEmailAndPassword(
           email: _email.text.trim(), password: _password.text);
+      // 登录页可能已在未认证状态下建立过 settings 监听（会被规则拒掉并终止），
+      // 认证成功后重建，语言偏好才能正常流动。
+      ref.invalidate(settingsProvider);
     } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() => _error = e.message ?? '登录失败');
+      if (mounted) setState(() => _error = e.message ?? t.signInFailed);
     } catch (e) {
-      if (mounted) setState(() => _error = '登录失败: $e');
+      if (mounted) setState(() => _error = t.signInError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -43,6 +47,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -53,18 +58,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('理财助手', textAlign: TextAlign.center, style: TextStyle(fontSize: 24)),
+                Text(t.appTitle,
+                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 24)),
                 const SizedBox(height: 24),
                 TextField(
                     key: const Key('email'),
                     controller: _email,
-                    decoration: const InputDecoration(labelText: '邮箱'),
+                    decoration: InputDecoration(labelText: t.email),
                     keyboardType: TextInputType.emailAddress),
                 const SizedBox(height: 12),
                 TextField(
                     key: const Key('password'),
                     controller: _password,
-                    decoration: const InputDecoration(labelText: '密码'),
+                    decoration: InputDecoration(labelText: t.password),
                     obscureText: true),
                 const SizedBox(height: 24),
                 if (_error != null)
@@ -77,7 +83,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   child: _busy
                       ? const SizedBox(
                           height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('登录'),
+                      : Text(t.signIn),
                 ),
               ],
             ),

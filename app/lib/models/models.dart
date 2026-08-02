@@ -73,17 +73,24 @@ class TickerQuote {
 }
 
 class Brief {
-  const Brief({required this.date, required this.markdownZh, required this.tickers, required this.createdAt,
-      required this.quotes});
+  const Brief({required this.date, required this.markdownZh, this.markdownEn = '',
+      required this.tickers, required this.createdAt, required this.quotes});
   final String date; // doc id, YYYY-MM-DD
   final String markdownZh;
+  final String markdownEn;
   final List<String> tickers;
   final DateTime createdAt;
   final Map<String, TickerQuote> quotes;
 
+  /// 目标语言缺失时兜底另一语言，永不空白（旧文档无 markdownEn）。
+  String markdownFor(String lang) => lang == 'en'
+      ? (markdownEn.isNotEmpty ? markdownEn : markdownZh)
+      : (markdownZh.isNotEmpty ? markdownZh : markdownEn);
+
   factory Brief.fromDoc(String id, Map<String, dynamic> d) => Brief(
         date: _s(d['date'], id),
         markdownZh: _s(d['markdownZh']),
+        markdownEn: _s(d['markdownEn']),
         tickers: List<String>.from(d['tickers'] as List? ?? const []),
         createdAt: _t(d['createdAt']),
         quotes: {
@@ -96,30 +103,54 @@ class Brief {
 
 class Analysis {
   const Analysis({required this.id, required this.ticker, required this.tradeDate,
-      required this.decision, required this.sections, required this.createdAt});
+      required this.decision, required this.sections, this.sectionsZh = const {},
+      required this.createdAt});
   final String id;
   final String ticker;
   final String tradeDate;
   final String decision;
-  final Map<String, String> sections;
+  final Map<String, String> sections;     // 引擎英文原文
+  final Map<String, String> sectionsZh;   // translate job 按需写入的中文译文
   final DateTime createdAt;
 
   String section(String key) => sections[key] ?? '';
+
+  /// zh 模式优先译文，没有译文回落英文原文；en 模式恒为原文。
+  String sectionFor(String key, String lang) {
+    if (lang == 'zh' && (sectionsZh[key] ?? '').isNotEmpty) return sectionsZh[key]!;
+    return sections[key] ?? '';
+  }
+
+  static final _cjk = RegExp(r'[一-鿿]');
+
+  /// zh 模式下该段是否还缺译文（用于显示「翻译此段」按钮）。
+  /// 原文本身已是中文的历史分析不需要翻译。
+  bool needsTranslation(String key, String lang) {
+    if (lang != 'zh') return false;
+    final src = sections[key] ?? '';
+    if (src.isEmpty || (sectionsZh[key] ?? '').isNotEmpty) return false;
+    final sample = src.length > 400 ? src.substring(0, 400) : src;
+    return _cjk.allMatches(sample).length < 20;
+  }
+
+  static Map<String, String> _strMap(Object? m) => Map<String, String>.from(
+      (m as Map? ?? const {}).map((k, v) => MapEntry(k as String, (v as String?) ?? '')));
 
   factory Analysis.fromDoc(String id, Map<String, dynamic> d) => Analysis(
         id: id,
         ticker: _s(d['ticker']),
         tradeDate: _s(d['tradeDate']),
         decision: _s(d['decision']),
-        sections: Map<String, String>.from(
-            (d['sections'] as Map? ?? const {}).map((k, v) => MapEntry(k as String, (v as String?) ?? ''))),
+        sections: _strMap(d['sections']),
+        sectionsZh: _strMap(d['sectionsZh']),
         createdAt: _t(d['createdAt']),
       );
 }
 
 class Suggestion {
   const Suggestion({required this.id, required this.ticker, required this.action,
-      required this.targetWeightPct, required this.rationale, required this.analysisId,
+      required this.targetWeightPct, required this.rationale, this.rationaleEn = '',
+      required this.analysisId,
       required this.status, required this.createdAt, required this.outcomePct,
       required this.resolvedAt, required this.reviewedAt, this.source = ''});
   final String id;
@@ -127,6 +158,7 @@ class Suggestion {
   final String action; // buy|add|trim|sell|hold
   final double? targetWeightPct;
   final String rationale;
+  final String rationaleEn;
   final String analysisId;
   final String status; // pending|accepted|dismissed
   final DateTime createdAt;
@@ -137,10 +169,14 @@ class Suggestion {
 
   bool get isPending => status == 'pending';
 
-  /// 策略来源的展示名；空串（引擎建议）返回 null 表示不显示 chip。
+  /// 目标语言缺失时兜底另一语言（旧建议无 rationaleEn）。
+  String rationaleFor(String lang) => lang == 'en'
+      ? (rationaleEn.isNotEmpty ? rationaleEn : rationale)
+      : (rationale.isNotEmpty ? rationale : rationaleEn);
+
+  /// 策略来源；空串（引擎建议）返回 null 表示不显示 chip。展示名由 UI 层 l10n 决定。
   String? get sourceLabel => switch (source) {
         '' => null,
-        'turtle' => '🐢 海龟',
         _ => source,
       };
 
@@ -150,6 +186,7 @@ class Suggestion {
         action: _s(d['action']),
         targetWeightPct: _dOrNull(d['targetWeightPct']),
         rationale: _s(d['rationale']),
+        rationaleEn: _s(d['rationaleEn']),
         analysisId: _s(d['analysisId']),
         status: _s(d['status'], 'pending'),
         createdAt: _t(d['createdAt']),
@@ -211,17 +248,24 @@ class CalendarEvent {
 
 class ChatMessage {
   const ChatMessage({required this.id, required this.question, this.answer,
-      required this.status, required this.createdAt});
+      this.answerEn, required this.status, required this.createdAt});
   final String id;
   final String question;
   final String? answer;
+  final String? answerEn;
   final String status; // pending | answered | failed
   final DateTime createdAt;
+
+  /// 目标语言缺失时兜底另一语言（旧回答无 answerEn）。
+  String? answerFor(String lang) => lang == 'en'
+      ? ((answerEn ?? '').isNotEmpty ? answerEn : answer)
+      : ((answer ?? '').isNotEmpty ? answer : answerEn);
 
   factory ChatMessage.fromDoc(String id, Map<String, dynamic> d) => ChatMessage(
       id: id,
       question: _s(d['question']),
       answer: d['answer'] as String?,
+      answerEn: d['answerEn'] as String?,
       status: _s(d['status'], 'pending'),
       createdAt: _t(d['createdAt']));
 }

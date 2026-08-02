@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/repo.dart';
+import 'l10n.dart';
 import 'models/models.dart';
 
 final firebaseAuthProvider = Provider<FirebaseAuth>((ref) => FirebaseAuth.instance);
@@ -24,4 +25,16 @@ final chatsProvider =
     StreamProvider<List<ChatMessage>>((ref) => ref.watch(repoProvider).chats());
 final runnerStatusProvider =
     StreamProvider<RunnerStatus>((ref) => ref.watch(repoProvider).runnerStatus());
+
+final settingsProvider =
+    StreamProvider<Map<String, dynamic>>((ref) => ref.watch(repoProvider).settings());
+
+/// 当前语言：meta/settings.lang，未设置缺省中文（单用户，母语中文）。
+final langProvider = Provider<String>((ref) {
+  final lang = ref.watch(settingsProvider).value?['lang'];
+  return lang == 'en' ? 'en' : 'zh';
+});
+
+final l10nProvider =
+    Provider<L10n>((ref) => ref.watch(langProvider) == 'en' ? l10nEn : l10nZh);
 

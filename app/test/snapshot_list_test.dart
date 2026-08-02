@@ -1,10 +1,17 @@
 import 'dart:async';
 
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wealth_assistant/providers.dart';
 import 'package:wealth_assistant/ui/widgets/snapshot_list.dart';
 
-Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+// StreamError 现在从 l10nProvider 取文案，需要 ProviderScope + fake firestore。
+Widget _wrap(Widget child) => ProviderScope(
+      overrides: [firestoreProvider.overrideWithValue(FakeFirebaseFirestore())],
+      child: MaterialApp(home: Scaffold(body: child)),
+    );
 
 void main() {
   testWidgets('shows StreamError (not the empty state) on stream error', (tester) async {

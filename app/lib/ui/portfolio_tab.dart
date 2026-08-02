@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n.dart';
 import '../logic/portfolio_math.dart';
 import '../models/models.dart';
 import '../providers.dart';
@@ -13,6 +14,7 @@ class PortfolioTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final positions = ref.watch(positionsProvider).value ?? const <Position>[];
     final meta = ref.watch(portfolioMetaProvider).value ??
         const PortfolioMeta(cash: 0, currency: 'USD');
@@ -29,13 +31,13 @@ class PortfolioTab extends ConsumerWidget {
               onTap: () => showDialog<void>(
                   context: context,
                   builder: (_) => _CashDialog(
-                      ref: ref, current: meta.cash, currency: meta.currency)),
+                      current: meta.cash, currency: meta.currency)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('总市值',
+                    Text(t.totalValue,
                         style: TextStyle(
                             fontSize: 12,
                             color: Theme.of(context).colorScheme.onSurfaceVariant)),
@@ -53,7 +55,7 @@ class PortfolioTab extends ConsumerWidget {
                     Row(
                       children: [
                         _OverviewColumn(
-                            label: '浮动盈亏',
+                            label: t.pnlFloating,
                             value: summary.pnlPct == null
                                 ? const Text('—')
                                 : Text(
@@ -65,7 +67,7 @@ class PortfolioTab extends ConsumerWidget {
                                   )),
                         const SizedBox(width: 28),
                         _OverviewColumn(
-                            label: '现金（点卡片编辑）',
+                            label: t.cashTapHint,
                             value: summary.cashEur == null
                                 ? const Text('—')
                                 : MoneyText(summary.cashEur!, size: 15, prefix: '€')),
@@ -86,12 +88,12 @@ class PortfolioTab extends ConsumerWidget {
                     Icon(Icons.pie_chart_outline,
                         size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     const SizedBox(height: 8),
-                    const Text('暂无持仓'),
+                    Text(t.noPositions),
                     const SizedBox(height: 12),
                     FilledButton.tonal(
                       onPressed: () => showDialog<void>(
-                          context: context, builder: (_) => _PositionDialog(ref: ref)),
-                      child: const Text('添加第一笔持仓'),
+                          context: context, builder: (_) => const _PositionDialog()),
+                      child: Text(t.addFirstPosition),
                     ),
                   ],
                 ),
@@ -103,29 +105,30 @@ class PortfolioTab extends ConsumerWidget {
                 title: Text(p.ticker,
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 subtitle: Text(
-                  '${p.shares.toStringAsFixed(0)} 股 · 成本 ${p.avgCost.toStringAsFixed(2)}',
+                  t.positionSubtitle(
+                      p.shares.toStringAsFixed(0), p.avgCost.toStringAsFixed(2)),
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
-                trailing: _positionTrailing(p, quotes[p.ticker]),
+                trailing: _positionTrailing(t, p, quotes[p.ticker]),
                 onTap: () => showDialog<void>(
                     context: context,
-                    builder: (_) => _PositionDialog(ref: ref, existing: p)),
+                    builder: (_) => _PositionDialog(existing: p)),
               ),
           const SizedBox(height: 80),
         ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => showDialog<void>(
-            context: context, builder: (_) => _PositionDialog(ref: ref)),
+            context: context, builder: (_) => const _PositionDialog()),
         child: const Icon(Icons.add),
       ),
     );
   }
 
-  Widget _positionTrailing(Position p, TickerQuote? q) {
+  Widget _positionTrailing(L10n t, Position p, TickerQuote? q) {
     if (q == null) {
       // 无行情源的 ISIN 资产（存单/未上市品种）按成本计入总值
-      return Text(isIsin(p.ticker) ? '按成本计' : '现价 —');
+      return Text(isIsin(p.ticker) ? t.atCost : t.noPrice);
     }
     final pnl = (q.close - p.avgCost) / p.avgCost * 100;
     return PriceWithPill(
@@ -155,18 +158,16 @@ class _OverviewColumn extends StatelessWidget {
   }
 }
 
-class _CashDialog extends StatefulWidget {
-  const _CashDialog(
-      {required this.ref, required this.current, this.currency = 'EUR'});
+class _CashDialog extends ConsumerStatefulWidget {
+  const _CashDialog({required this.current, this.currency = 'EUR'});
   final String currency;
-  final WidgetRef ref;
   final double current;
 
   @override
-  State<_CashDialog> createState() => _CashDialogState();
+  ConsumerState<_CashDialog> createState() => _CashDialogState();
 }
 
-class _CashDialogState extends State<_CashDialog> {
+class _CashDialogState extends ConsumerState<_CashDialog> {
   late final _cash = TextEditingController(text: widget.current.toStringAsFixed(2));
   late String _currency = widget.currency == 'USD' ? 'USD' : 'EUR';
 
@@ -179,21 +180,22 @@ class _CashDialogState extends State<_CashDialog> {
   Future<void> _save() async {
     final cash = double.tryParse(_cash.text);
     if (cash == null || cash < 0) return;
-    await widget.ref.read(repoProvider).setCash(cash, currency: _currency);
+    await ref.read(repoProvider).setCash(cash, currency: _currency);
     if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
     return AlertDialog(
-      title: const Text('编辑现金'),
+      title: Text(t.editCash),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             key: const Key('cashField'),
             controller: _cash,
-            decoration: const InputDecoration(labelText: '现金'),
+            decoration: InputDecoration(labelText: t.cash),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
           const SizedBox(height: 8),
@@ -209,20 +211,19 @@ class _CashDialogState extends State<_CashDialog> {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-        FilledButton(key: const Key('cashSave'), onPressed: _save, child: const Text('保存')),
+            onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
+        FilledButton(key: const Key('cashSave'), onPressed: _save, child: Text(t.save)),
       ],
     );
   }
 }
 
-class _PositionDialog extends StatefulWidget {
-  const _PositionDialog({required this.ref, this.existing});
-  final WidgetRef ref;
+class _PositionDialog extends ConsumerStatefulWidget {
+  const _PositionDialog({this.existing});
   final Position? existing;
 
   @override
-  State<_PositionDialog> createState() => _PositionDialogState();
+  ConsumerState<_PositionDialog> createState() => _PositionDialogState();
 }
 
 /// Formats a double for prefill without corrupting fractional values:
@@ -231,7 +232,7 @@ class _PositionDialog extends StatefulWidget {
 String _fmtPrefill(double v) =>
     v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
 
-class _PositionDialogState extends State<_PositionDialog> {
+class _PositionDialogState extends ConsumerState<_PositionDialog> {
   late final _ticker = TextEditingController(text: widget.existing?.ticker ?? '');
   late final _shares = TextEditingController(
       text: widget.existing == null ? '' : _fmtPrefill(widget.existing!.shares));
@@ -253,7 +254,7 @@ class _PositionDialogState extends State<_PositionDialog> {
     if (ticker.isEmpty || shares == null || shares <= 0 || avgCost == null || avgCost <= 0) {
       return;
     }
-    await widget.ref
+    await ref
         .read(repoProvider)
         .setPosition(ticker: ticker, shares: shares, avgCost: avgCost);
     if (mounted) Navigator.of(context).pop();
@@ -262,34 +263,36 @@ class _PositionDialogState extends State<_PositionDialog> {
   Future<void> _delete() async {
     final existing = widget.existing;
     if (existing == null) return;
+    final t = ref.read(l10nProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('删除 ${existing.ticker} 持仓？'),
-        content: const Text('此操作不可恢复。'),
+        title: Text(t.deletePositionTitle(existing.ticker)),
+        content: Text(t.irreversible),
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+              onPressed: () => Navigator.of(ctx).pop(false), child: Text(t.cancel)),
           TextButton(
               key: const Key('posDeleteConfirm'),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('删除')),
+              child: Text(t.delete)),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
-    await widget.ref.read(repoProvider).deletePosition(existing.ticker);
+    await ref.read(repoProvider).deletePosition(existing.ticker);
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
-    messenger.showSnackBar(SnackBar(content: Text('已删除 ${existing.ticker}')));
+    messenger.showSnackBar(SnackBar(content: Text(t.deleted(existing.ticker))));
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
     final isNew = widget.existing == null;
     return AlertDialog(
-      title: Text(isNew ? '新增持仓' : '编辑持仓：${widget.existing!.ticker}'),
+      title: Text(isNew ? t.newPosition : t.editPosition(widget.existing!.ticker)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -298,13 +301,13 @@ class _PositionDialogState extends State<_PositionDialog> {
           TextField(
             key: const Key('posShares'),
             controller: _shares,
-            decoration: const InputDecoration(labelText: '股数'),
+            decoration: InputDecoration(labelText: t.shares),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
           TextField(
             key: const Key('posAvgCost'),
             controller: _avgCost,
-            decoration: const InputDecoration(labelText: '成本价'),
+            decoration: InputDecoration(labelText: t.avgCost),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
         ],
@@ -312,10 +315,10 @@ class _PositionDialogState extends State<_PositionDialog> {
       actions: [
         if (!isNew)
           TextButton(
-              key: const Key('posDelete'), onPressed: _delete, child: const Text('删除')),
+              key: const Key('posDelete'), onPressed: _delete, child: Text(t.delete)),
         TextButton(
-            onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-        FilledButton(key: const Key('posSave'), onPressed: _save, child: const Text('保存')),
+            onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
+        FilledButton(key: const Key('posSave'), onPressed: _save, child: Text(t.save)),
       ],
     );
   }

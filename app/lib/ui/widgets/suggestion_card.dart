@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/models.dart';
+import '../../providers.dart';
 
-class SuggestionCard extends StatelessWidget {
+class SuggestionCard extends ConsumerWidget {
   const SuggestionCard({super.key, required this.suggestion, this.onAccept, this.onDismiss});
   final Suggestion suggestion;
   final VoidCallback? onAccept;
   final VoidCallback? onDismiss;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final s = suggestion;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -32,23 +35,25 @@ class SuggestionCard extends StatelessWidget {
                       border: Border.all(
                           color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
-                    child: Text(s.sourceLabel!, style: const TextStyle(fontSize: 12)),
+                    // 已知策略映射到 l10n 展示名，未知策略直接显示原始 source。
+                    child: Text(s.source == 'turtle' ? t.turtleSource : s.sourceLabel!,
+                        style: const TextStyle(fontSize: 12)),
                   ),
               ],
             ),
             if (s.targetWeightPct != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text('目标仓位 ${s.targetWeightPct!.toStringAsFixed(1)}%'),
+                child: Text(t.targetWeight(s.targetWeightPct!.toStringAsFixed(1))),
               ),
             const SizedBox(height: 8),
-            Text(s.rationale),
+            Text(s.rationaleFor(ref.watch(langProvider))),
             const SizedBox(height: 8),
             Row(
               children: [
-                FilledButton(onPressed: onAccept, child: const Text('采纳')),
+                FilledButton(onPressed: onAccept, child: Text(t.accept)),
                 const SizedBox(width: 8),
-                TextButton(onPressed: onDismiss, child: const Text('忽略')),
+                TextButton(onPressed: onDismiss, child: Text(t.dismiss)),
               ],
             ),
           ],

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firebase_options.dart';
+import 'l10n.dart';
+import 'providers.dart';
 import 'ui/auth_gate.dart';
 
 const _brandGreen = Color(0xFF34C759);
@@ -36,13 +38,23 @@ final ThemeData _darkTheme = ThemeData(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(ProviderScope(
-    child: MaterialApp(
-      title: '理财助手',
+  runApp(const ProviderScope(child: WealthApp()));
+}
+
+class WealthApp extends ConsumerWidget {
+  const WealthApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 登录前 meta/settings 不可读（安全规则要求已认证），此时只用缺省中文标题，
+    // 避免过早建立会被 permission-denied 杀死的 settings 监听。
+    final signedIn = ref.watch(authStateProvider).value != null;
+    return MaterialApp(
+      title: signedIn ? ref.watch(l10nProvider).appTitle : l10nZh.appTitle,
       theme: _lightTheme,
       darkTheme: _darkTheme,
       themeMode: ThemeMode.dark,
       home: const AuthGate(),
-    ),
-  ));
+    );
+  }
 }

@@ -5,29 +5,33 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/symbol_search.dart';
+import '../../providers.dart';
 import 'pnl.dart' show pnlColor;
 
-class TickerField extends StatefulWidget {
+class TickerField extends ConsumerStatefulWidget {
   const TickerField({
     super.key,
     required this.controller,
     this.fieldKey,
-    this.label = '代码或名称（如 AAPL / 苹果）',
+    this.label,
     this.onSubmitted,
   });
 
   final TextEditingController controller;
   final Key? fieldKey;
-  final String label;
+
+  /// 覆盖输入框 label；不传时用 l10n 的通用提示（代码或名称）。
+  final String? label;
   final VoidCallback? onSubmitted;
 
   @override
-  State<TickerField> createState() => _TickerFieldState();
+  ConsumerState<TickerField> createState() => _TickerFieldState();
 }
 
-class _TickerFieldState extends State<TickerField> {
+class _TickerFieldState extends ConsumerState<TickerField> {
   final _focus = FocusNode();
 
   @override
@@ -45,6 +49,7 @@ class _TickerFieldState extends State<TickerField> {
 
   @override
   Widget build(BuildContext context) {
+    final label = widget.label ?? ref.watch(l10nProvider).tickerFieldHint;
     return RawAutocomplete<SymbolEntry>(
       textEditingController: widget.controller,
       focusNode: _focus,
@@ -57,7 +62,7 @@ class _TickerFieldState extends State<TickerField> {
           key: widget.fieldKey,
           controller: controller,
           focusNode: focusNode,
-          decoration: InputDecoration(labelText: widget.label),
+          decoration: InputDecoration(labelText: label),
           textCapitalization: TextCapitalization.characters,
           onSubmitted: (_) {
             onFieldSubmitted();

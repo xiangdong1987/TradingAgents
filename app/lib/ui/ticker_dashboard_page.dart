@@ -4,12 +4,14 @@
 /// 自上而下：评级横幅（5 档标尺）→ 交易计划磁贴 → 价位标尺 → 技术信号 →
 /// 基本面要点 → 多空对辩 → 结论卡 → 风控视角 → 分析师原文 → 历史评级时间线。
 /// 每个区块的数据都来自 `analysis_insights.dart` 的解析器，解析不出就整块隐藏。
+/// 展示正文按当前语言取 `sectionFor`；zh 模式缺译文的段落带「翻译此段」按钮。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n.dart';
 import '../logic/analysis_insights.dart';
 import '../logic/portfolio_math.dart' show isIsin;
 import '../models/models.dart';
@@ -39,10 +41,6 @@ IconData _toneIcon(Tone t) => switch (t) {
       Tone.neutral => Icons.trending_flat,
     };
 
-const _actionZh = {
-  'buy': '买入', 'sell': '卖出', 'hold': '持有', 'add': '加仓', 'trim': '减仓',
-};
-
 class TickerDashboardPage extends ConsumerStatefulWidget {
   const TickerDashboardPage({super.key, required this.ticker});
   final String ticker;
@@ -57,12 +55,13 @@ class _TickerDashboardPageState extends ConsumerState<TickerDashboardPage> {
   @override
   Widget build(BuildContext context) {
     final ticker = widget.ticker;
+    final t = ref.watch(l10nProvider);
     return Scaffold(
       appBar: AppBar(
         title: Text(ticker, style: const TextStyle(fontSize: 22)),
         actions: [
           IconButton(
-            tooltip: '历史分析列表',
+            tooltip: t.analysisListTitle,
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => TickerAnalysesPage(ticker: ticker))),
@@ -96,11 +95,12 @@ class _EmptyState extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     if (isIsin(ticker)) {
-      return const Center(
+      return Center(
           child: Padding(
-        padding: EdgeInsets.all(32),
-        child: Text('单只债券暂不支持深度分析', textAlign: TextAlign.center),
+        padding: const EdgeInsets.all(32),
+        child: Text(t.bondNoDeep, textAlign: TextAlign.center),
       ));
     }
     return Center(
@@ -110,9 +110,9 @@ class _EmptyState extends ConsumerWidget {
           Icon(Icons.insights, size: 48,
               color: Theme.of(context).colorScheme.onSurfaceVariant),
           const SizedBox(height: 12),
-          const Text('还没有分析记录'),
+          Text(t.noAnalyses),
           const SizedBox(height: 12),
-          _AnalyzeAction(ticker: ticker, label: '立即分析'),
+          _AnalyzeAction(ticker: ticker, label: t.analyzeNow),
         ],
       ),
     );
@@ -127,11 +127,12 @@ class _AnalyzeAction extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final jobs = ref.watch(activeJobsProvider).value ?? const <Job>[];
     final active = jobs.where((j) => j.ticker == ticker).toList();
     if (active.isNotEmpty) {
       return Chip(
-          label: Text(active.first.status == 'queued' ? '排队中' : '分析中'));
+          label: Text(active.first.status == 'queued' ? t.jobQueued : t.analyzing));
     }
     return FilledButton.tonalIcon(
       key: const Key('reanalyze'),
@@ -142,7 +143,7 @@ class _AnalyzeAction extends ConsumerWidget {
         await ref.read(repoProvider).enqueueDeepAnalysis(ticker);
         if (context.mounted) {
           ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('$ticker 已排队')));
+              .showSnackBar(SnackBar(content: Text(t.queued(ticker))));
         }
       },
     );
@@ -157,6 +158,8 @@ class _Dashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
     final quote = ref.watch(latestBriefProvider).value?.quotes[ticker];
     final prefix = currencyPrefix(ticker);
     final a = latest;
@@ -176,60 +179,67 @@ class _Dashboard extends ConsumerWidget {
         if (signals.isNotEmpty) _TechSignalsCard(signals: signals),
         if (metrics.isNotEmpty) _FundamentalsCard(metrics: metrics),
         _BullBearRow(analysis: a),
-        ..._conclusionCards(a),
+        ..._conclusionCards(a, t, lang),
         _RiskRow(analysis: a),
-        ..._reportCards(a),
+        ..._reportCards(a, t, lang),
         if (history.isNotEmpty) _HistoryStrip(history: history),
       ],
     );
   }
 
-  List<Widget> _conclusionCards(Analysis a) {
-    final rm = a.section('researchManager');
-    final pm = a.section('portfolioDecision').isNotEmpty
-        ? a.section('portfolioDecision')
-        : a.section('finalDecision');
+  List<Widget> _conclusionCards(Analysis a, L10n t, String lang) {
+    final rm = a.sectionFor('researchManager', lang);
+    final pmKey = a.section('portfolioDecision').isNotEmpty
+        ? 'portfolioDecision'
+        : 'finalDecision';
+    final pm = a.sectionFor(pmKey, lang);
     return [
       if (rm.isNotEmpty)
         _ExpandableCard(
           icon: Icons.school_outlined,
-          title: '研究主管',
-          badge: kvValue(rm, ['Recommendation', 'Rating']),
+          title: t.secResearchManager,
+          badge: kvValue(a.section('researchManager'), ['Recommendation', 'Rating']),
           excerptText: excerpt(kvValue(rm, ['Rationale']) ?? rm, maxChars: 120),
           fullMd: rm,
+          analysis: a,
+          sectionKey: 'researchManager',
         ),
       if (pm.isNotEmpty)
         _ExpandableCard(
           icon: Icons.account_balance_outlined,
-          title: '组合经理决定',
-          badge: kvValue(pm, ['Rating', 'Recommendation']),
+          title: t.secPortfolioDecision,
+          badge: kvValue(a.section(pmKey), ['Rating', 'Recommendation']),
           excerptText:
               excerpt(kvValue(pm, ['Executive Summary']) ?? pm, maxChars: 140),
           fullMd: pm,
+          analysis: a,
+          sectionKey: pmKey,
         ),
     ];
   }
 
-  List<Widget> _reportCards(Analysis a) {
-    const reports = [
-      (key: 'market', icon: Icons.candlestick_chart_outlined, title: '技术面原文'),
-      (key: 'fundamentals', icon: Icons.assessment_outlined, title: '基本面原文'),
-      (key: 'sentiment', icon: Icons.forum_outlined, title: '情绪面原文'),
-      (key: 'news', icon: Icons.newspaper_outlined, title: '新闻面原文'),
+  List<Widget> _reportCards(Analysis a, L10n t, String lang) {
+    final reports = [
+      (key: 'market', icon: Icons.candlestick_chart_outlined, title: t.marketOriginal),
+      (key: 'fundamentals', icon: Icons.assessment_outlined, title: t.fundamentalsOriginal),
+      (key: 'sentiment', icon: Icons.forum_outlined, title: t.sentimentOriginal),
+      (key: 'news', icon: Icons.newspaper_outlined, title: t.newsOriginal),
     ];
     final cards = <Widget>[
       for (final r in reports)
-        if (a.section(r.key).isNotEmpty)
+        if (a.sectionFor(r.key, lang).isNotEmpty)
           _ExpandableCard(
             icon: r.icon,
             title: r.title,
-            excerptText: excerpt(a.section(r.key), maxChars: 60),
-            fullMd: a.section(r.key),
+            excerptText: excerpt(a.sectionFor(r.key, lang), maxChars: 60),
+            fullMd: a.sectionFor(r.key, lang),
             dense: true,
+            analysis: a,
+            sectionKey: r.key,
           ),
     ];
     if (cards.isEmpty) return const [];
-    return [const _SectionLabel('分析师原文'), ...cards];
+    return [_SectionLabel(t.analystOriginal), ...cards];
   }
 }
 
@@ -252,22 +262,24 @@ class _SectionLabel extends StatelessWidget {
 // 评级横幅
 // ---------------------------------------------------------------------------
 
-class _RatingBanner extends StatelessWidget {
+class _RatingBanner extends ConsumerWidget {
   const _RatingBanner({required this.analysis, required this.quote, required this.prefix});
   final Analysis analysis;
   final TickerQuote? quote;
   final String prefix;
 
-  String get _relativeDay {
+  String _relativeDay(L10n t) {
     final d = DateTime.tryParse(analysis.tradeDate);
     if (d == null) return '';
     final days = DateTime.now().difference(d).inDays;
-    if (days <= 0) return ' · 今天';
-    return ' · $days天前';
+    if (days <= 0) return t.relToday;
+    return t.relDaysAgo(days);
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
     final idx = ratingIndex(analysis.decision);
     final color = idx == null ? const Color(0xFF8E8E93) : _ratingColors[idx];
     return Card(
@@ -283,7 +295,7 @@ class _RatingBanner extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(idx == null ? analysis.decision : ratingZh(idx),
+                      Text(idx == null ? analysis.decision : ratingLabel(idx, lang),
                           key: const Key('dashRating'),
                           style: TextStyle(
                               fontSize: 30, fontWeight: FontWeight.w900, color: color)),
@@ -306,17 +318,17 @@ class _RatingBanner extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            if (idx != null) _RatingScale(activeIndex: idx),
+            if (idx != null) _RatingScale(activeIndex: idx, lang: lang),
             const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: Text('分析日 ${analysis.tradeDate}$_relativeDay',
+                  child: Text(t.analysisDay(analysis.tradeDate, _relativeDay(t)),
                       style: TextStyle(
                           fontSize: 12,
                           color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ),
-                _AnalyzeAction(ticker: analysis.ticker, label: '重新分析'),
+                _AnalyzeAction(ticker: analysis.ticker, label: t.reAnalyze),
               ],
             ),
           ],
@@ -328,8 +340,9 @@ class _RatingBanner extends StatelessWidget {
 
 /// 卖出→买入 5 档色带，当前档加高、加标签粗体。
 class _RatingScale extends StatelessWidget {
-  const _RatingScale({required this.activeIndex});
+  const _RatingScale({required this.activeIndex, required this.lang});
   final int activeIndex;
+  final String lang;
 
   @override
   Widget build(BuildContext context) {
@@ -352,7 +365,7 @@ class _RatingScale extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(ratingLabels[i],
+                  Text(ratingLabel(i, lang),
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: i == activeIndex ? FontWeight.w800 : FontWeight.w400,
@@ -373,7 +386,7 @@ class _RatingScale extends StatelessWidget {
 // 交易计划磁贴 + 情绪条
 // ---------------------------------------------------------------------------
 
-class _PlanTiles extends StatelessWidget {
+class _PlanTiles extends ConsumerWidget {
   _PlanTiles({required this.analysis})
       : action = kvValue(analysis.section('traderPlan'), ['Action']),
         entry = kvValue(analysis.section('traderPlan'), ['Entry Price', '入场价']),
@@ -400,7 +413,8 @@ class _PlanTiles extends StatelessWidget {
       action != null || entry != null || stop != null || horizon != null || score != null;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final actionIdx = action == null ? null : ratingIndex(action!);
     final actionColor = actionIdx == null
         ? Colors.white
@@ -411,31 +425,31 @@ class _PlanTiles extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('交易计划', style: TextStyle(fontWeight: FontWeight.w700)),
+            Text(t.tradePlan, style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             Row(
               children: [
                 if (action != null)
                   Expanded(
                       child: _StatTile(
-                          label: '方向',
-                          value: _actionZh[action!.toLowerCase()] ?? action!,
+                          label: t.direction,
+                          value: t.actionName(action!),
                           valueColor: actionColor)),
                 if (entry != null)
-                  Expanded(child: _StatTile(label: '入场价', value: entry!)),
+                  Expanded(child: _StatTile(label: t.entryPrice, value: entry!)),
                 if (stop != null)
                   Expanded(
                       child: _StatTile(
-                          label: '止损价',
+                          label: t.stopPrice,
                           value: stop!,
                           valueColor: const Color(0xFFFF3B30))),
                 if (horizon != null)
-                  Expanded(child: _StatTile(label: '时间视野', value: horizon!)),
+                  Expanded(child: _StatTile(label: t.timeHorizon, value: horizon!)),
               ],
             ),
             if (sizing != null) ...[
               const SizedBox(height: 10),
-              Text('仓位建议：$sizing',
+              Text(t.sizingLine(sizing!),
                   style: TextStyle(
                       fontSize: 13,
                       color: Theme.of(context).colorScheme.onSurfaceVariant)),
@@ -489,16 +503,15 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-const _confidenceZh = {'low': '低', 'medium': '中', 'high': '高'};
-
-class _SentimentBar extends StatelessWidget {
+class _SentimentBar extends ConsumerWidget {
   const _SentimentBar({required this.score, this.confidence});
   final double score; // 0..10
   final String? confidence;
 
   @override
-  Widget build(BuildContext context) {
-    final t = (score / 10).clamp(0.0, 1.0);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final v = (score / 10).clamp(0.0, 1.0);
     final color = score >= 6.5
         ? const Color(0xFF34C759)
         : score <= 3.5
@@ -506,10 +519,10 @@ class _SentimentBar extends StatelessWidget {
             : const Color(0xFFFFCC00);
     final conf = confidence == null
         ? ''
-        : ' · 置信度${_confidenceZh[confidence!.toLowerCase()] ?? confidence}';
+        : t.confidenceSuffix(t.confidenceName(confidence!));
     return Row(
       children: [
-        Text('市场情绪',
+        Text(t.secSentiment,
             style: TextStyle(
                 fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(width: 10),
@@ -517,7 +530,7 @@ class _SentimentBar extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: t,
+              value: v,
               minHeight: 8,
               color: color,
               backgroundColor: const Color(0xFF2C2C2E),
@@ -536,20 +549,22 @@ class _SentimentBar extends StatelessWidget {
 // 价位标尺
 // ---------------------------------------------------------------------------
 
-class _PriceLadderCard extends StatelessWidget {
+class _PriceLadderCard extends ConsumerWidget {
   const _PriceLadderCard({required this.levels, required this.prefix});
   final List<PriceLevel> levels;
   final String prefix;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('关键价位', style: TextStyle(fontWeight: FontWeight.w700)),
+            Text(t.keyLevels, style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
             SizedBox(
               height: 136,
@@ -557,6 +572,7 @@ class _PriceLadderCard extends StatelessWidget {
               child: CustomPaint(
                 painter: _LadderPainter(
                   levels: levels,
+                  lang: lang,
                   axisColor: const Color(0xFF3A3A3C),
                   baseTextColor:
                       Theme.of(context).colorScheme.onSurfaceVariant,
@@ -571,11 +587,15 @@ class _PriceLadderCard extends StatelessWidget {
 }
 
 class _LadderPainter extends CustomPainter {
-  _LadderPainter({required this.levels, required this.axisColor, required this.baseTextColor});
+  _LadderPainter(
+      {required this.levels, required this.lang, required this.axisColor,
+      required this.baseTextColor});
   final List<PriceLevel> levels; // 已按价格升序
+  final String lang;
   final Color axisColor;
   final Color baseTextColor;
 
+  // label 是解析器的规范中文键（levelLabel 只负责展示转换）。
   Color _levelColor(String label) => switch (label) {
         '现价' => Colors.white,
         '止损' => const Color(0xFFFF3B30),
@@ -624,7 +644,7 @@ class _LadderPainter extends CustomPainter {
 
       final tp = TextPainter(
         text: TextSpan(
-          text: '${l.label}\n${l.value.toStringAsFixed(2)}',
+          text: '${levelLabel(l.label, lang)}\n${l.value.toStringAsFixed(2)}',
           style: TextStyle(
               color: color,
               fontSize: 10,
@@ -640,19 +660,21 @@ class _LadderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_LadderPainter old) => old.levels != levels;
+  bool shouldRepaint(_LadderPainter old) =>
+      old.levels != levels || old.lang != lang;
 }
 
 // ---------------------------------------------------------------------------
 // 技术信号
 // ---------------------------------------------------------------------------
 
-class _TechSignalsCard extends StatelessWidget {
+class _TechSignalsCard extends ConsumerWidget {
   const _TechSignalsCard({required this.signals});
   final List<IndicatorSignal> signals;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final bulls = signals.where((s) => s.tone == Tone.bullish).length;
     final bears = signals.where((s) => s.tone == Tone.bearish).length;
     final flats = signals.length - bulls - bears;
@@ -664,9 +686,10 @@ class _TechSignalsCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Expanded(
-                    child: Text('技术信号', style: TextStyle(fontWeight: FontWeight.w700))),
-                Text('$bulls 多 · $flats 平 · $bears 空',
+                Expanded(
+                    child: Text(t.techSignals,
+                        style: const TextStyle(fontWeight: FontWeight.w700))),
+                Text(t.debateCount(bulls, flats, bears),
                     style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(context).colorScheme.onSurfaceVariant)),
@@ -729,19 +752,20 @@ class _TechSignalsCard extends StatelessWidget {
 // 基本面要点
 // ---------------------------------------------------------------------------
 
-class _FundamentalsCard extends StatelessWidget {
+class _FundamentalsCard extends ConsumerWidget {
   const _FundamentalsCard({required this.metrics});
   final List<LabeledValue> metrics;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('基本面要点', style: TextStyle(fontWeight: FontWeight.w700)),
+            Text(t.fundamentalsKey, style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             LayoutBuilder(
               builder: (context, c) {
@@ -826,16 +850,20 @@ void _showReportSheet(BuildContext context, String title, String md) {
   );
 }
 
-class _DebateColumn extends StatelessWidget {
+class _DebateColumn extends ConsumerWidget {
   const _DebateColumn(
-      {required this.title, required this.color, required this.icon, required this.md});
+      {required this.title, required this.color, required this.icon,
+      required this.md, required this.analysis, required this.sectionKey});
   final String title;
   final Color color;
   final IconData icon;
   final String md;
+  final Analysis analysis;
+  final String sectionKey;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final text = cleanDebate(md);
     return Card(
       margin: EdgeInsets.zero,
@@ -859,8 +887,16 @@ class _DebateColumn extends StatelessWidget {
               Text(excerpt(text, maxChars: 110),
                   style: const TextStyle(fontSize: 12.5, height: 1.5)),
               const SizedBox(height: 6),
-              Text('全文 ›',
-                  style: TextStyle(fontSize: 11, color: color)),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(t.fullText,
+                        style: TextStyle(fontSize: 11, color: color)),
+                  ),
+                  AnalysisTranslateButton(
+                      analysis: analysis, sectionKey: sectionKey, dense: true),
+                ],
+              ),
             ],
           ),
         ),
@@ -869,14 +905,16 @@ class _DebateColumn extends StatelessWidget {
   }
 }
 
-class _BullBearRow extends StatelessWidget {
+class _BullBearRow extends ConsumerWidget {
   const _BullBearRow({required this.analysis});
   final Analysis analysis;
 
   @override
-  Widget build(BuildContext context) {
-    final bull = analysis.section('bull');
-    final bear = analysis.section('bear');
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
+    final bull = analysis.sectionFor('bull', lang);
+    final bear = analysis.sectionFor('bear', lang);
     if (bull.isEmpty && bear.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -886,40 +924,47 @@ class _BullBearRow extends StatelessWidget {
           if (bull.isNotEmpty)
             Expanded(
                 child: _DebateColumn(
-                    title: '多方观点',
+                    title: t.secBull,
                     color: const Color(0xFF34C759),
                     icon: Icons.north_east,
-                    md: bull)),
+                    md: bull,
+                    analysis: analysis,
+                    sectionKey: 'bull')),
           if (bull.isNotEmpty && bear.isNotEmpty) const SizedBox(width: 8),
           if (bear.isNotEmpty)
             Expanded(
                 child: _DebateColumn(
-                    title: '空方观点',
+                    title: t.secBear,
                     color: const Color(0xFFFF3B30),
                     icon: Icons.south_east,
-                    md: bear)),
+                    md: bear,
+                    analysis: analysis,
+                    sectionKey: 'bear')),
         ],
       ),
     );
   }
 }
 
-class _RiskRow extends StatelessWidget {
+class _RiskRow extends ConsumerWidget {
   const _RiskRow({required this.analysis});
   final Analysis analysis;
 
   @override
-  Widget build(BuildContext context) {
-    const views = [
-      (key: 'riskAggressive', title: '激进', icon: Icons.local_fire_department_outlined,
-          color: Color(0xFFFF9500)),
-      (key: 'riskNeutral', title: '中性', icon: Icons.balance_outlined,
-          color: Color(0xFF8E8E93)),
-      (key: 'riskConservative', title: '保守', icon: Icons.shield_outlined,
-          color: Color(0xFF64D2FF)),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
+    final views = [
+      (key: 'riskAggressive', title: t.riskAggressiveShort,
+          icon: Icons.local_fire_department_outlined, color: const Color(0xFFFF9500)),
+      (key: 'riskNeutral', title: t.riskNeutralShort,
+          icon: Icons.balance_outlined, color: const Color(0xFF8E8E93)),
+      (key: 'riskConservative', title: t.riskConservativeShort,
+          icon: Icons.shield_outlined, color: const Color(0xFF64D2FF)),
     ];
-    final present =
-        views.where((v) => analysis.section(v.key).isNotEmpty).toList();
+    final present = views
+        .where((v) => analysis.sectionFor(v.key, lang).isNotEmpty)
+        .toList();
     if (present.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -933,8 +978,8 @@ class _RiskRow extends StatelessWidget {
                 margin: EdgeInsets.zero,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
-                  onTap: () => _showReportSheet(context, '${v.title}风控视角',
-                      cleanDebate(analysis.section(v.key))),
+                  onTap: () => _showReportSheet(context, t.riskView(v.title),
+                      cleanDebate(analysis.sectionFor(v.key, lang))),
                   child: Padding(
                     padding: const EdgeInsets.all(10),
                     child: Column(
@@ -953,9 +998,16 @@ class _RiskRow extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          excerpt(cleanDebate(analysis.section(v.key)),
+                          excerpt(cleanDebate(analysis.sectionFor(v.key, lang)),
                               maxChars: 46),
                           style: const TextStyle(fontSize: 11, height: 1.45),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: AnalysisTranslateButton(
+                              analysis: analysis,
+                              sectionKey: v.key,
+                              dense: true),
                         ),
                       ],
                     ),
@@ -974,26 +1026,30 @@ class _RiskRow extends StatelessWidget {
 // 通用可展开卡片（单列，内联展开全文）
 // ---------------------------------------------------------------------------
 
-class _ExpandableCard extends StatefulWidget {
+class _ExpandableCard extends ConsumerStatefulWidget {
   const _ExpandableCard(
       {required this.icon, required this.title, this.badge, required this.excerptText,
-      required this.fullMd, this.dense = false});
+      required this.fullMd, this.dense = false, required this.analysis,
+      required this.sectionKey});
   final IconData icon;
   final String title;
   final String? badge;
   final String excerptText;
   final String fullMd;
   final bool dense;
+  final Analysis analysis;
+  final String sectionKey;
 
   @override
-  State<_ExpandableCard> createState() => _ExpandableCardState();
+  ConsumerState<_ExpandableCard> createState() => _ExpandableCardState();
 }
 
-class _ExpandableCardState extends State<_ExpandableCard> {
+class _ExpandableCardState extends ConsumerState<_ExpandableCard> {
   bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
+    final lang = ref.watch(langProvider);
     final badgeIdx = widget.badge == null ? null : ratingIndex(widget.badge!);
     final badgeColor =
         badgeIdx == null ? const Color(0xFF8E8E93) : _ratingColors[badgeIdx];
@@ -1015,6 +1071,10 @@ class _ExpandableCardState extends State<_ExpandableCard> {
                     child: Text(widget.title,
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                   ),
+                  AnalysisTranslateButton(
+                      analysis: widget.analysis,
+                      sectionKey: widget.sectionKey,
+                      dense: widget.dense),
                   if (widget.badge != null)
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
@@ -1023,7 +1083,9 @@ class _ExpandableCardState extends State<_ExpandableCard> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                          badgeIdx == null ? widget.badge! : ratingZh(badgeIdx),
+                          badgeIdx == null
+                              ? widget.badge!
+                              : ratingLabel(badgeIdx, lang),
                           style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
@@ -1058,16 +1120,18 @@ class _ExpandableCardState extends State<_ExpandableCard> {
 // 历史评级时间线
 // ---------------------------------------------------------------------------
 
-class _HistoryStrip extends StatelessWidget {
+class _HistoryStrip extends ConsumerWidget {
   const _HistoryStrip({required this.history});
   final List<Analysis> history; // 新→旧
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel('历史评级 · 点开看当次报告'),
+        _SectionLabel(t.historyRatings),
         SizedBox(
           height: 64,
           child: ListView.separated(
@@ -1100,7 +1164,7 @@ class _HistoryStrip extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                         border: i == 0 ? Border.all(color: color) : null,
                       ),
-                      child: Text(idx == null ? a.decision : ratingZh(idx),
+                      child: Text(idx == null ? a.decision : ratingLabel(idx, lang),
                           style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,

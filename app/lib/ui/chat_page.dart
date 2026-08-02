@@ -10,6 +10,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'widgets/pnl.dart' show pnlColor;
@@ -45,6 +46,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
+    final lang = ref.watch(langProvider);
     final chats = ref.watch(chatsProvider).value ?? const <ChatMessage>[];
     final grey = Theme.of(context).colorScheme.onSurfaceVariant;
 
@@ -56,7 +59,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(32),
                     child: Text(
-                      '问点什么吧——回答会结合你的实时持仓、现金与最近的深度分析结论。\n\n例：可口可乐和 Intesa 哪个更适合买入？',
+                      t.chatEmptyHint,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: grey),
                     ),
@@ -75,15 +78,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         _Bubble.right(copyText: c.question, child: Text(c.question)),
                         switch (c.status) {
                           'answered' => _Bubble.left(
-                              copyText: c.answer,
+                              copyText: c.answerFor(lang),
                               child: MarkdownBody(
-                                  data: c.answer ?? '',
+                                  data: c.answerFor(lang) ?? '',
                                   styleSheet: _chatMarkdown(context))),
                           'failed' => _Bubble.left(
-                              child: Text('回答失败，请重新提问',
+                              child: Text(t.chatFailed,
                                   style: TextStyle(color: pnlColor(-1)))),
                           _ => _Bubble.left(
-                              child: Text('分析中…', style: TextStyle(color: grey))),
+                              child: Text(t.analyzingEllipsis,
+                                  style: TextStyle(color: grey))),
                         },
                       ],
                     );
@@ -101,9 +105,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   child: TextField(
                     key: const Key('askField'),
                     controller: _q,
-                    decoration: const InputDecoration(
-                      hintText: '结合持仓问点什么…',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      hintText: t.chatInputHint,
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                     onSubmitted: (_) => _send(),
@@ -146,7 +150,7 @@ MarkdownStyleSheet _chatMarkdown(BuildContext context) {
   );
 }
 
-class _Bubble extends StatelessWidget {
+class _Bubble extends ConsumerWidget {
   const _Bubble({required this.child, required this.alignRight, this.copyText});
 
   const _Bubble.right({required Widget child, String? copyText})
@@ -158,23 +162,24 @@ class _Bubble extends StatelessWidget {
   final bool alignRight;
   final String? copyText;
 
-  Future<void> _copy(BuildContext context) async {
+  Future<void> _copy(BuildContext context, L10n t) async {
     final text = copyText;
     if (text == null || text.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: text));
     if (context.mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已复制')));
+          .showSnackBar(SnackBar(content: Text(t.copied)));
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final scheme = Theme.of(context).colorScheme;
     return Align(
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: () => _copy(context),
+        onLongPress: () => _copy(context, t),
         child: Container(
           // 宽屏（web/桌面）上限 640，避免整行铺开难以阅读
           constraints: BoxConstraints(

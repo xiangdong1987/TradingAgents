@@ -150,6 +150,28 @@ class WealthRepo {
   }
 
 
+  /// meta/settings（当前只有 lang: zh|en），三端实时同步。
+  Stream<Map<String, dynamic>> settings() => _db
+      .collection('meta')
+      .doc('settings')
+      .snapshots()
+      .map((s) => s.data() ?? const {});
+
+  Future<void> setLang(String lang) => _db
+      .collection('meta')
+      .doc('settings')
+      .set({'lang': lang}, SetOptions(merge: true));
+
+  /// 按需翻译深度分析的某些段落（写一条 translate job，runner 消费后
+  /// 增量写回 analyses/{id}.sectionsZh，Firestore 流自动刷新 UI）。
+  Future<String> enqueueTranslate(String analysisId, List<String> sections) async {
+    final ref = await _db.collection('jobs').add({
+      'type': 'translate', 'analysisId': analysisId, 'sections': sections,
+      'status': 'queued', 'requestedBy': 'user', 'createdAt': utcNowIso(),
+    });
+    return ref.id;
+  }
+
   /// runner 心跳（meta/runner）：App 据此显示在线/离线。
   Stream<RunnerStatus> runnerStatus() => _db
       .collection('meta')

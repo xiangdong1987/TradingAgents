@@ -13,7 +13,8 @@ class AuthGate extends ConsumerWidget {
     return ref.watch(authStateProvider).when(
           data: (user) => user == null ? const LoginPage() : const HomeShell(),
           loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
-          error: (e, _) => Scaffold(body: Center(child: Text('认证出错: $e'))),
+          error: (e, _) => Scaffold(
+              body: Center(child: Text(ref.watch(l10nProvider).authError(e)))),
         );
   }
 }

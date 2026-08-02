@@ -134,6 +134,32 @@ void main() {
     expect(empty.cash, 0.0);
     expect(empty.currency, 'USD');
   });
+
+  group('Analysis.needsTranslation', () {
+    Analysis mk({String? bull, Map<String, String> zh = const {}}) =>
+        Analysis(id: 'a', ticker: 'MSFT', tradeDate: 'd', decision: 'BUY',
+            sections: {'bull': bull ?? ''}, sectionsZh: zh,
+            createdAt: DateTime.utc(2026));
+
+    test('english original in zh mode needs translation', () {
+      expect(mk(bull: 'The bull case is strong because growth accelerates.')
+          .needsTranslation('bull', 'zh'), isTrue);
+    });
+    test('already translated section does not', () {
+      expect(mk(bull: 'English text here', zh: {'bull': '译文'})
+          .needsTranslation('bull', 'zh'), isFalse);
+    });
+    test('legacy chinese original does not', () {
+      expect(mk(bull: '好的，朋友们，作为今天的看多分析师，我非常兴奋。数据已经摆在这里了，让我们直击核心，看看这家公司的黄金时代。')
+          .needsTranslation('bull', 'zh'), isFalse);
+    });
+    test('en mode never needs translation', () {
+      expect(mk(bull: 'English text').needsTranslation('bull', 'en'), isFalse);
+    });
+    test('empty section does not', () {
+      expect(mk().needsTranslation('bull', 'zh'), isFalse);
+    });
+  });
 }
 
 Map<String, dynamic> _sug({Object? target}) {

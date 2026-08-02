@@ -2,6 +2,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wealth_assistant/models/models.dart';
 import 'package:wealth_assistant/providers.dart';
 import 'package:wealth_assistant/ui/analysis_detail_page.dart';
 import 'package:wealth_assistant/ui/ticker_dashboard_page.dart';
@@ -142,8 +143,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Rationale'), findsNothing); // 摘要态只有纯文本
-    await tester.ensureVisible(find.text('研究主管'));
-    await tester.tap(find.text('研究主管'));
+    await tester.ensureVisible(find.text('研究主管结论'));
+    await tester.tap(find.text('研究主管结论'));
     await tester.pumpAndSettle();
     expect(find.textContaining('风险回报比不利于做多'), findsWidgets);
   });
@@ -219,5 +220,112 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(TickerDashboardPage), findsOneWidget);
     expect(find.byKey(const Key('dashRating')), findsOneWidget);
+  });
+
+  // ---------------------------------------------------------------------------
+  // 按需翻译按钮（zh 缺省语言，无 sectionsZh 译文）
+  // ---------------------------------------------------------------------------
+
+  testWidgets('dashboard translate button appears in zh and enqueues job',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    await _seed(db);
+    _tallViewport(tester);
+    await tester.pumpWidget(
+        _wrap(db, const TickerDashboardPage(ticker: 'ENEL.MI')));
+    await tester.pumpAndSettle();
+
+    final btn = find.byKey(const Key('translate-bull'));
+    expect(btn, findsOneWidget);
+    await tester.ensureVisible(btn);
+    await tester.tap(btn);
+    await tester.pumpAndSettle();
+
+    final analysisId = (await db
+            .collection('analyses')
+            .where('tradeDate', isEqualTo: '2026-07-31')
+            .get())
+        .docs
+        .single
+        .id;
+    final job = (await db.collection('jobs').get())
+        .docs
+        .map((d) => d.data())
+        .singleWhere((j) => j['type'] == 'translate');
+    expect(job['analysisId'], analysisId);
+    expect(job['sections'], ['bull']);
+    expect(job['status'], 'queued');
+    expect(find.text('翻译已排队，稍后自动显示'), findsOneWidget);
+  });
+
+  testWidgets('dashboard hides translate button and shows translation when present',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    await _seed(db);
+    final doc = (await db
+            .collection('analyses')
+            .where('tradeDate', isEqualTo: '2026-07-31')
+            .get())
+        .docs
+        .single;
+    await doc.reference.update({
+      'sectionsZh': {'bull': '译文：多方核心观点（中文）'},
+    });
+    _tallViewport(tester);
+    await tester.pumpWidget(
+        _wrap(db, const TickerDashboardPage(ticker: 'ENEL.MI')));
+    await tester.pumpAndSettle();
+
+    // bull 已有译文：按钮消失、正文显示译文；bear 仍缺译文，按钮还在。
+    expect(find.byKey(const Key('translate-bull')), findsNothing);
+    expect(find.textContaining('译文：多方核心观点'), findsOneWidget);
+    expect(find.byKey(const Key('translate-bear')), findsOneWidget);
+  });
+
+  testWidgets('detail page translate button enqueues job for that section',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    final a = Analysis(
+      id: 'a1',
+      ticker: 'NVDA',
+      tradeDate: '2026-08-01',
+      decision: 'Buy',
+      sections: const {'market': 'Moving averages trending up.'},
+      createdAt: DateTime.utc(2026, 8, 1),
+    );
+    await tester.pumpWidget(_wrap(db, AnalysisDetailPage(analysis: a)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('translate-market')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('translate-market')));
+    await tester.pumpAndSettle();
+
+    final job = (await db.collection('jobs').get()).docs.single.data();
+    expect(job['type'], 'translate');
+    expect(job['analysisId'], 'a1');
+    expect(job['sections'], ['market']);
+    expect(find.text('翻译已排队，稍后自动显示'), findsOneWidget);
+  });
+
+  testWidgets('detail page shows translation and hides button when present',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    final a = Analysis(
+      id: 'a2',
+      ticker: 'NVDA',
+      tradeDate: '2026-08-01',
+      decision: 'Buy',
+      sections: const {'market': 'Moving averages trending up.'},
+      sectionsZh: const {'market': '均线趋势向上。'},
+      createdAt: DateTime.utc(2026, 8, 1),
+    );
+    await tester.pumpWidget(_wrap(db, AnalysisDetailPage(analysis: a)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('translate-market')), findsNothing);
+    await tester.tap(find.text('市场技术面'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('均线趋势向上'), findsOneWidget);
+    expect(find.textContaining('Moving averages'), findsNothing);
   });
 }

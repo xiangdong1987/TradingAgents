@@ -124,6 +124,29 @@ void main() {
       expect(ratingZh(0), '卖出');
       expect(ratingZh(4), '买入');
     });
+
+    test('ratingLabel is lang-aware: zh 中文档位，en 引擎原词', () {
+      expect(ratingLabel(1, 'zh'), '减持');
+      expect(ratingLabel(1, 'en'), 'Underweight');
+      expect(ratingLabel(4, 'zh'), '买入');
+      expect(ratingLabel(4, 'en'), 'Buy');
+      expect(ratingLabel(9, 'en'), 'Buy'); // clamp
+    });
+  });
+
+  group('levelLabel', () {
+    test('zh keeps canonical key, en maps to english short label', () {
+      expect(levelLabel('现价', 'zh'), '现价');
+      expect(levelLabel('现价', 'en'), 'Price');
+      expect(levelLabel('入场', 'en'), 'Entry');
+      expect(levelLabel('止损', 'en'), 'Stop');
+      expect(levelLabel('200日线', 'en'), '200D MA');
+    });
+
+    test('unknown label falls through unchanged', () {
+      expect(levelLabel('自定义', 'en'), '自定义');
+      expect(levelLabel('自定义', 'zh'), '自定义');
+    });
   });
 
   test('sentimentScore parses x/10', () {

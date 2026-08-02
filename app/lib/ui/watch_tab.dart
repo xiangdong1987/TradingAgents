@@ -14,6 +14,7 @@ class WatchTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
     final watch = ref.watch(watchlistProvider);
     final quotes = ref.watch(latestBriefProvider).value?.quotes ?? const {};
     final jobs = ref.watch(activeJobsProvider).value ?? const <Job>[];
@@ -22,7 +23,7 @@ class WatchTab extends ConsumerWidget {
     return Scaffold(
       body: watch.when(
         data: (items) => items.isEmpty
-            ? const Center(child: Text('自选列表为空，点右下角添加'))
+            ? Center(child: Text(t.watchEmpty))
             : ListView(
                 children: [
                   for (final w in items)
@@ -38,7 +39,7 @@ class WatchTab extends ConsumerWidget {
                         await ref.read(repoProvider).removeWatch(w.ticker);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('已删除 ${w.ticker}')));
+                              SnackBar(content: Text(t.deleted(w.ticker))));
                         }
                       },
                       child: ListTile(
@@ -48,7 +49,7 @@ class WatchTab extends ConsumerWidget {
                           onTap: () => ref.read(repoProvider).setDeepFreq(
                               w.ticker, w.deepFreq == 'weekly' ? 'manual' : 'weekly'),
                           child: Text(
-                            w.deepFreq == 'weekly' ? '每周自动分析' : '手动分析',
+                            w.deepFreq == 'weekly' ? t.weeklyAuto : t.manualAnalysis,
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                         ),
@@ -65,7 +66,8 @@ class WatchTab extends ConsumerWidget {
                                 ? const SizedBox.shrink()
                                 : activeTickers.containsKey(w.ticker)
                                 ? Chip(label: Text(
-                                    activeTickers[w.ticker] == 'queued' ? '排队中' : '分析中'))
+                                    activeTickers[w.ticker] == 'queued'
+                                        ? t.jobQueued : t.analyzing))
                                 : FilledButton.tonal(
                                     style: FilledButton.styleFrom(
                                         visualDensity: VisualDensity.compact),
@@ -73,10 +75,10 @@ class WatchTab extends ConsumerWidget {
                                       await ref.read(repoProvider).enqueueDeepAnalysis(w.ticker);
                                       if (context.mounted) {
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('${w.ticker} 已排队')));
+                                            SnackBar(content: Text(t.queued(w.ticker))));
                                       }
                                     },
-                                    child: const Text('分析')),
+                                    child: Text(t.analyze)),
                           ],
                         ),
                       ),
@@ -88,7 +90,7 @@ class WatchTab extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => showDialog<void>(
-            context: context, builder: (_) => _AddWatchDialog(ref: ref)),
+            context: context, builder: (_) => const _AddWatchDialog()),
         child: const Icon(Icons.add),
       ),
     );
@@ -101,15 +103,14 @@ class WatchTab extends ConsumerWidget {
   }
 }
 
-class _AddWatchDialog extends StatefulWidget {
-  const _AddWatchDialog({required this.ref});
-  final WidgetRef ref;
+class _AddWatchDialog extends ConsumerStatefulWidget {
+  const _AddWatchDialog();
 
   @override
-  State<_AddWatchDialog> createState() => _AddWatchDialogState();
+  ConsumerState<_AddWatchDialog> createState() => _AddWatchDialogState();
 }
 
-class _AddWatchDialogState extends State<_AddWatchDialog> {
+class _AddWatchDialogState extends ConsumerState<_AddWatchDialog> {
   final _ticker = TextEditingController();
   String _deepFreq = 'manual';
 
@@ -122,14 +123,15 @@ class _AddWatchDialogState extends State<_AddWatchDialog> {
   Future<void> _submit() async {
     final t = _ticker.text.trim().toUpperCase();
     if (t.isEmpty) return;
-    await widget.ref.read(repoProvider).addWatch(t, deepFreq: _deepFreq);
+    await ref.read(repoProvider).addWatch(t, deepFreq: _deepFreq);
     if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
     return AlertDialog(
-      title: const Text('添加自选'),
+      title: Text(t.addWatch),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -137,9 +139,9 @@ class _AddWatchDialogState extends State<_AddWatchDialog> {
               onSubmitted: _submit),
           const SizedBox(height: 8),
           SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'manual', label: Text('手动分析')),
-              ButtonSegment(value: 'weekly', label: Text('每周分析')),
+            segments: [
+              ButtonSegment(value: 'manual', label: Text(t.manualAnalysis)),
+              ButtonSegment(value: 'weekly', label: Text(t.weeklyLabel)),
             ],
             selected: {_deepFreq},
             onSelectionChanged: (s) => setState(() => _deepFreq = s.first),
@@ -150,7 +152,7 @@ class _AddWatchDialogState extends State<_AddWatchDialog> {
         FilledButton(
           key: const Key('watchAdd'),
           onPressed: _submit,
-          child: const Text('添加'),
+          child: Text(t.add),
         ),
       ],
     );
