@@ -55,6 +55,24 @@ dev_dependencies:
   fake_cloud_firestore: ^4.2.0
   firebase_auth_mocks: ^0.15.2
   mock_exceptions: ^0.8.2
+  flutter_launcher_icons: ^0.14.4
+
+# 应用图标：assets/icon/ 下的 PNG 由仓库内脚本生成（Apple Stocks 风格暗底+上行折线）。
+# 重新生成各平台图标：dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#101014"
+  adaptive_icon_foreground: "assets/icon/icon_fg.png"
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    background_color: "#0A0A0C"
+    theme_color: "#34C759"
+  macos:
+    generate: true
+    image_path: "assets/icon/icon_macos.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

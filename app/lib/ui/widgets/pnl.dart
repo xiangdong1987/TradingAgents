@@ -5,8 +5,13 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../logic/portfolio_math.dart' show isEurListing;
+
+/// 千分位 + 固定两位小数：71390.03 → '71,390.03'。所有金额展示统一走这里。
+final _money = NumberFormat('#,##0.00');
+String formatMoney(double v) => _money.format(v);
 
 /// iOS system green for gains, red for losses (>= 0 counts as a gain).
 Color pnlColor(double v) => v >= 0 ? const Color(0xFF34C759) : const Color(0xFFFF3B30);
@@ -77,7 +82,7 @@ class PriceWithPill extends StatelessWidget {
   }
 }
 
-/// Bold tabular-figure money text: `value.toStringAsFixed(2)`.
+/// Bold tabular-figure money text with thousands separators.
 class MoneyText extends StatelessWidget {
   const MoneyText(this.value,
       {super.key, this.size = 17.0, this.weight = FontWeight.w700, this.color,
@@ -92,7 +97,7 @@ class MoneyText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      '$prefix${value.toStringAsFixed(2)}',
+      '$prefix${formatMoney(value)}',
       style: TextStyle(
         fontSize: size,
         fontWeight: weight,

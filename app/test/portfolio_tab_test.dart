@@ -55,8 +55,8 @@ void main() {
     // 汇率 1.25：现金 5000USD→€4000；股票市值 2457.50USD→€1966；
     // 总市值 €5966.00；总浮动盈亏 = (2457.5-2000)/2000 = +22.88%（折算不变），
     // 与 NVDA 自身 +33.83% 、AAPL 自身 -10.00% 均不同，可唯一定位总览行文本。
-    expect(find.textContaining('€4000.00'), findsOneWidget);     // 现金（欧元）
-    expect(find.textContaining('€5966.00'), findsOneWidget);     // 总市值（欧元）
+    expect(find.textContaining('€4,000.00'), findsOneWidget);    // 现金（欧元）
+    expect(find.textContaining('€5,966.00'), findsOneWidget);    // 总市值（欧元）
     expect(find.textContaining('22.88'), findsOneWidget);        // 总浮动盈亏
     expect(find.textContaining('NVDA'), findsWidgets);
     expect(find.textContaining('AAPL'), findsWidgets);

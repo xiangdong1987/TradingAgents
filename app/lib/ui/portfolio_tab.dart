@@ -32,22 +32,27 @@ class PortfolioTab extends ConsumerWidget {
                       ref: ref, current: meta.cash, currency: meta.currency)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                        child: _OverviewColumn(
-                            label: '现金',
-                            value: summary.cashEur == null
-                                ? const Text('—')
-                                : MoneyText(summary.cashEur!, size: 20, prefix: '€'))),
-                    Expanded(
-                        child: _OverviewColumn(
-                            label: '总市值',
-                            value: summary.totalEur == null
-                                ? const Text('—')
-                                : MoneyText(summary.totalEur!, size: 20, prefix: '€'))),
-                    Expanded(
-                        child: _OverviewColumn(
+                    Text('总市值',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: summary.totalEur == null
+                          ? const Text('—',
+                              style: TextStyle(
+                                  fontSize: 32, fontWeight: FontWeight.w800))
+                          : MoneyText(summary.totalEur!,
+                              size: 32, weight: FontWeight.w800, prefix: '€'),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _OverviewColumn(
                             label: '浮动盈亏',
                             value: summary.pnlPct == null
                                 ? const Text('—')
@@ -55,9 +60,17 @@ class PortfolioTab extends ConsumerWidget {
                                     pnlLabel(summary.pnlPct!),
                                     style: TextStyle(
                                         color: pnlColor(summary.pnlPct!),
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w800),
-                                  ))),
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700),
+                                  )),
+                        const SizedBox(width: 28),
+                        _OverviewColumn(
+                            label: '现金（点卡片编辑）',
+                            value: summary.cashEur == null
+                                ? const Text('—')
+                                : MoneyText(summary.cashEur!, size: 15, prefix: '€')),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -120,8 +133,8 @@ class PortfolioTab extends ConsumerWidget {
   }
 }
 
-/// Small gray label above a bold value — the shared shape of one column in
-/// the three-way cash / market-value / pnl overview row.
+/// Small gray label above a compact value — one cell of the secondary
+/// pnl / cash row under the hero total.
 class _OverviewColumn extends StatelessWidget {
   const _OverviewColumn({required this.label, required this.value});
   final String label;
@@ -130,7 +143,7 @@ class _OverviewColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
             style: TextStyle(

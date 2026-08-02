@@ -146,10 +146,9 @@ class _StrategyScanAction extends ConsumerWidget {
   }
 }
 
-/// Combined market-value / pnl / cash overview, shown above the daily brief.
-/// Mirrors [PortfolioTab]'s three-column overview card but with the
-/// heavier 22sp/w800 total emphasis and a de-emphasized (gray) cash column
-/// called for by this tab's brief.
+/// Apple-Stocks-style hero overview: the EUR total owns a full line in large
+/// type (FittedBox so long amounts scale down instead of wrapping on phones),
+/// with pnl and cash demoted to a small secondary row underneath.
 class _OverviewBar extends StatelessWidget {
   const _OverviewBar({required this.summary});
   final PortfolioSummary summary;
@@ -161,42 +160,43 @@ class _OverviewBar extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: _OverviewColumn(
-                label: '总市值',
-                labelColor: grey,
-                value: summary.totalEur == null
-                    ? const Text('—')
-                    : MoneyText(summary.totalEur!,
-                        size: 22, weight: FontWeight.w800, prefix: '€'),
-              ),
+            Text('总市值', style: TextStyle(fontSize: 12, color: grey)),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: summary.totalEur == null
+                  ? const Text('—',
+                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800))
+                  : MoneyText(summary.totalEur!,
+                      size: 32, weight: FontWeight.w800, prefix: '€'),
             ),
-            Expanded(
-              child: _OverviewColumn(
-                label: '浮动盈亏',
-                labelColor: grey,
-                value: summary.pnlPct == null
-                    ? const Text('—')
-                    : Text(
-                        pnlLabel(summary.pnlPct!),
-                        style: TextStyle(
-                            color: pnlColor(summary.pnlPct!),
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800),
-                      ),
-              ),
-            ),
-            Expanded(
-              child: _OverviewColumn(
-                label: '现金',
-                labelColor: grey,
-                value: summary.cashEur == null
-                    ? const Text('—')
-                    : MoneyText(summary.cashEur!,
-                        size: 20, color: grey, prefix: '€'),
-              ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _MiniStat(
+                  label: '浮动盈亏',
+                  value: summary.pnlPct == null
+                      ? const Text('—')
+                      : Text(
+                          pnlLabel(summary.pnlPct!),
+                          style: TextStyle(
+                              color: pnlColor(summary.pnlPct!),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700),
+                        ),
+                ),
+                const SizedBox(width: 28),
+                _MiniStat(
+                  label: '现金',
+                  value: summary.cashEur == null
+                      ? const Text('—')
+                      : MoneyText(summary.cashEur!,
+                          size: 15, color: grey, prefix: '€'),
+                ),
+              ],
             ),
           ],
         ),
@@ -205,19 +205,21 @@ class _OverviewBar extends StatelessWidget {
   }
 }
 
-class _OverviewColumn extends StatelessWidget {
-  const _OverviewColumn({required this.label, required this.labelColor, required this.value});
+/// Small gray label above a compact value — one cell of the secondary row.
+class _MiniStat extends StatelessWidget {
+  const _MiniStat({required this.label, required this.value});
   final String label;
-  final Color labelColor;
   final Widget value;
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, color: labelColor)),
-        const SizedBox(height: 4),
+        Text(label,
+            style: TextStyle(
+                fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 2),
         value,
       ],
     );

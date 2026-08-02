@@ -45,5 +45,12 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: Scaffold(body: MoneyText(200.7))));
       expect(find.text('200.70'), findsOneWidget);
     });
+
+    testWidgets('large amounts get thousands separators (no wrapping digits)',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+          home: Scaffold(body: MoneyText(71390.03, prefix: '€'))));
+      expect(find.text('€71,390.03'), findsOneWidget);
+    });
   });
 }
