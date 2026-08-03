@@ -165,10 +165,12 @@ class WealthRepo {
     };
     if (suggestionId != null) trade['suggestionId'] = suggestionId;
 
+    var sellTax = 0.0;
     if (isSell) {
       final pnl = (price - avgCost) * qty;
+      sellTax = defaultSellTax(pnl);              // 盈利按 26% 计，亏损为 0
       trade['realizedPnl'] = pnl;
-      trade['taxAmount'] = defaultSellTax(pnl);   // 盈利按 26% 计，亏损为 0
+      trade['taxAmount'] = sellTax;
       trade['avgCostAtTrade'] = avgCost;
       final left = held - qty;
       if (left <= 0) {
@@ -190,8 +192,11 @@ class WealthRepo {
     }
 
     batch.set(_db.collection('trades').doc(), trade);
+    // 卖出到账的是**本金 + 税后盈利**（= 成交额 − 资本利得税）——券商在成交时
+    // 就把税扣走了，所以现金加的是净额；亏损时税为 0，净额即成交额。
     batch.set(_db.collection('meta').doc('portfolio'),
-        {'cash': isSell ? cash + amount : cash - amount}, SetOptions(merge: true));
+        {'cash': isSell ? cash + amount - sellTax : cash - amount},
+        SetOptions(merge: true));
     if (suggestionId != null) {
       batch.update(_db.collection('suggestions').doc(suggestionId),
           {'status': 'accepted', 'resolvedAt': utcNowIso()});
@@ -414,8 +419,10 @@ class WealthRepo {
         'ticker': ticker, 'shares': held + qty, 'avgCost': restoredAvg,
         'updatedAt': utcNowIso(),
       }, SetOptions(merge: true));
+      // 当初到账的是净额（成交额 − 税），撤回时按同样的净额扣回
+      final tax = (d['taxAmount'] as num?)?.toDouble() ?? 0;
       batch.set(_db.collection('meta').doc('portfolio'),
-          {'cash': cash - amount}, SetOptions(merge: true));
+          {'cash': cash - (amount - tax)}, SetOptions(merge: true));
     } else {
       // 撤回买入：股数减回、现金加回，成本价按加权平均反解
       final left = held - qty;

@@ -859,6 +859,23 @@ class _SellDialogState extends ConsumerState<_SellDialog> {
     messenger.showSnackBar(SnackBar(content: Text(t.tradeRecorded)));
   }
 
+  /// 预计到账提示文案：本金 + 税后盈利 = 现金。输入不全时返回 null。
+  String? _proceeds(String prefix) {
+    final shares = double.tryParse(_shares.text);
+    final price = double.tryParse(_price.text);
+    if (shares == null || shares <= 0 || price == null || price <= 0) return null;
+    final t = ref.read(l10nProvider);
+    final avg = widget.position.avgCost;
+    final principal = shares * avg;
+    final pnl = (price - avg) * shares;
+    final netGain = pnl - defaultSellTax(pnl);
+    final hint = t.proceedsHint(
+        '$prefix${formatMoney(principal)}',
+        '$prefix${formatMoney(netGain)}',
+        '$prefix${formatMoney(principal + netGain)}');
+    return pnl <= 0 ? '$hint（${t.lossNoTax}）' : hint;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = ref.watch(l10nProvider);
@@ -882,6 +899,7 @@ class _SellDialogState extends ConsumerState<_SellDialog> {
           TextField(
             key: const Key('sellShares'),
             controller: _shares,
+            onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               labelText: t.shares,
               suffixIcon: TextButton(
@@ -896,6 +914,7 @@ class _SellDialogState extends ConsumerState<_SellDialog> {
           TextField(
             key: const Key('sellPrice'),
             controller: _price,
+            onChanged: (_) => setState(() {}),
             decoration: InputDecoration(labelText: '${t.priceLabel} ($prefix)'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
@@ -904,6 +923,15 @@ class _SellDialogState extends ConsumerState<_SellDialog> {
             controller: _date,
             decoration: InputDecoration(labelText: t.tradeDate),
           ),
+          // 到账现金 = 本金 + 税后盈利（券商成交时就扣掉资本利得税）
+          if (_proceeds(prefix.trim()) case final hint?) ...[
+            const SizedBox(height: 8),
+            Text(hint,
+                key: const Key('sellProceeds'),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ],
         ],
       ),
       actions: [

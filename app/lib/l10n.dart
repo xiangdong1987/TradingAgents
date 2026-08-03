@@ -163,6 +163,10 @@ class L10n {
   String get preTax => isZh ? '税前' : 'Pre-tax';
   String get afterTax => isZh ? '税后' : 'After tax';
   String get tax => isZh ? '税' : 'Tax';
+  String proceedsHint(String principal, String netGain, String cash) => isZh
+      ? '预计到账：本金 $principal + 税后盈利 $netGain = $cash'
+      : 'Cash in: principal $principal + after-tax gain $netGain = $cash';
+  String get lossNoTax => isZh ? '亏损不计税' : 'No tax on a loss';
   String get openedAt => isZh ? '建仓日（可选）' : 'Opened on (optional)';
   String get openedAtHint => isZh
       ? '填了之后分红只从这天起算'

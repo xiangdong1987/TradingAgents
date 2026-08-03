@@ -232,11 +232,13 @@ void main() {
       final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
       expect(pos['shares'], 60);
       expect(pos['avgCost'], 8.0);
+      // 到账 = 本金 320 + 税后盈利 80×0.74 = 379.2（不是全额 400）
       expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
-          1000 + 400);
+          closeTo(1000 + 379.2, 0.001));
       final tr = (await db.collection('trades').get()).docs.single.data();
       expect(tr['side'], 'sell');
       expect(tr['realizedPnl'], 80.0);        // (10 - 8) * 40
+      expect(tr['taxAmount'], closeTo(20.8, 0.001));   // 80 × 26%
     });
 
     testWidgets('realized pnl from past sells shows in the return card',

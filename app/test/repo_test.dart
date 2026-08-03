@@ -225,7 +225,8 @@ void main() {
       expect(pos['shares'], 60);
       expect(pos['avgCost'], 10);            // 成本价不因卖出改变
       final cash = (await db.collection('meta').doc('portfolio').get()).data()!['cash'];
-      expect(cash, 5000 + 600);
+      // 到账 = 本金 400 + 税后盈利 200×0.74 = 548（不是全额 600）
+      expect(cash, closeTo(5000 + 548, 0.001));
       final tr = (await db.collection('trades').get()).docs.single.data();
       expect(tr['realizedPnl'], 200);        // (15-10) * 40
       expect(tr['avgCostAtTrade'], 10);
@@ -237,7 +238,8 @@ void main() {
           price: 15, date: '2026-08-03');
       expect((await db.collection('positions').doc('ENEL.MI').get()).exists, isFalse);
       final cash = (await db.collection('meta').doc('portfolio').get()).data()!['cash'];
-      expect(cash, 5000 + 1500);
+      // 本金 1000 + 税后盈利 500×0.74 = 1370
+      expect(cash, closeTo(5000 + 1370, 0.001));
     });
 
     test('selling more than held is clamped to the held quantity', () async {
@@ -379,8 +381,9 @@ void main() {
       expect(tr['date'], '2026-08-04');
       final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
       expect(pos['shares'], 80);                      // 100 − 20
+      // 只算新的那笔：本金 200 + 税后盈利 120×0.74 = 288.8
       expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
-          5000 + 320);                                // 只算新的那笔
+          closeTo(5000 + 288.8, 0.001));
     });
 
     test('deleting manual income takes the cash back, auto income does not',
@@ -429,6 +432,66 @@ void main() {
       final pos = (await db.collection('positions').doc('KO').get()).data()!;
       expect(pos['shares'], 20);
       expect(pos['openedAt'], '2026-07-01');   // 没被整文档覆盖掉
+    });
+  });
+
+  group('卖出到账 = 本金 + 税后盈利', () {
+    Future<void> seed({double cash = 0}) async {
+      await db.collection('positions').doc('ENEL.MI').set({
+        'ticker': 'ENEL.MI', 'shares': 100.0, 'avgCost': 10.0, 'updatedAt': 'x',
+      });
+      await db.collection('meta').doc('portfolio').set({'cash': cash, 'currency': 'EUR'});
+    }
+
+    test('a profitable sell credits principal plus the after-tax gain', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 50,
+          price: 16, date: '2026-08-03');
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      final cash = (await db.collection('meta').doc('portfolio').get())
+          .data()!['cash'] as num;
+      final principal = 50 * 10.0;                       // 500
+      final pnl = tr['realizedPnl'] as num;              // (16-10)*50 = 300
+      final tax = tr['taxAmount'] as num;                // 300 × 26% = 78
+      expect(pnl, 300);
+      expect(tax, closeTo(78, 0.001));
+      // 身份式：到账 = 本金 + 税后盈利 = 成交额 − 税
+      expect(cash, closeTo(principal + (pnl - tax), 0.001));
+      expect(cash, closeTo(50 * 16 - tax, 0.001));
+      expect(cash, closeTo(722, 0.001));
+    });
+
+    test('a losing sell is untaxed, so cash equals the full proceeds', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 50,
+          price: 8, date: '2026-08-03');
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['taxAmount'], 0);
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+          closeTo(400, 0.001));                          // 50 × 8，无税可扣
+    });
+
+    test('a flat sell (price == cost) is untaxed', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 50,
+          price: 10, date: '2026-08-03');
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['realizedPnl'], 0);
+      expect(tr['taxAmount'], 0);
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+          closeTo(500, 0.001));
+    });
+
+    test('deleting a taxed sell takes back exactly what landed', () async {
+      await seed(cash: 1000);
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 50,
+          price: 16, date: '2026-08-03');
+      final id = (await db.collection('trades').get()).docs.single.id;
+      await repo.deleteTrade(id);
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+          closeTo(1000, 0.001));                         // 净额扣回，回到原值
+      expect((await db.collection('positions').doc('ENEL.MI').get()).data()!['shares'],
+          100);
     });
   });
 }
