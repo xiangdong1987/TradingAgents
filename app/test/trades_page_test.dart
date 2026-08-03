@@ -74,4 +74,73 @@ void main() {
     expect(tester.getTopLeft(find.text('分红利息')).dy,
         lessThan(tester.getTopLeft(find.text('买入')).dy));
   });
+
+  testWidgets('tapping a trade opens the editor and saving updates it',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('positions').doc('ENEL.MI').set({
+      'ticker': 'ENEL.MI', 'shares': 90.0, 'avgCost': 8.0, 'updatedAt': 'x',
+    });
+    await db.collection('meta').doc('portfolio').set({'cash': 100.0, 'currency': 'EUR'});
+    await db.collection('trades').add({
+      'ticker': 'ENEL.MI', 'side': 'sell', 'shares': 10.0, 'price': 10.0,
+      'date': '2026-08-03', 'realizedPnl': 20.0, 'taxAmount': 5.2,
+      'avgCostAtTrade': 8.0,
+    });
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('税后'), findsOneWidget);   // 卖出行带税后一行
+
+    await tester.tap(find.text('ENEL.MI'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('editShares')), '20');
+    await tester.tap(find.byKey(const Key('editSave')));
+    await tester.pumpAndSettle();
+    final tr = (await db.collection('trades').get()).docs.single.data();
+    expect(tr['shares'], 20);
+  });
+
+  testWidgets('deleting a trade asks for confirmation first', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('positions').doc('KO').set({
+      'ticker': 'KO', 'shares': 10.0, 'avgCost': 80.0, 'updatedAt': 'x',
+    });
+    await db.collection('meta').doc('portfolio').set({'cash': 0.0, 'currency': 'EUR'});
+    await db.collection('trades').add({
+      'ticker': 'KO', 'side': 'buy', 'shares': 5.0, 'price': 80.0, 'date': '2026-08-01',
+    });
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('KO'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('editDelete')));
+    await tester.pumpAndSettle();
+    expect(find.text('删除这笔记录？'), findsOneWidget);
+    expect((await db.collection('trades').get()).docs, hasLength(1));  // 还没删
+    await tester.tap(find.byKey(const Key('confirmDelete')));
+    await tester.pumpAndSettle();
+    expect((await db.collection('trades').get()).docs, isEmpty);
+    // 撤回买入：股数减回、现金加回
+    expect((await db.collection('positions').doc('KO').get()).data()!['shares'], 5);
+    expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 400);
+  });
+
+  testWidgets('income row opens its editor', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('meta').doc('portfolio').set({'cash': 0.0, 'currency': 'EUR'});
+    await db.collection('income').doc('ENEL.MI_2026-07-15').set({
+      'ticker': 'ENEL.MI', 'date': '2026-07-15', 'amount': 65.0,
+      'taxAmount': 16.9, 'source': 'auto', 'creditedCash': false,
+    });
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('税后 €48.10'), findsOneWidget);   // 65 − 16.9
+    await tester.tap(find.text('ENEL.MI'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('editIncomeTax')), '20');
+    await tester.tap(find.byKey(const Key('editIncomeSave')));
+    await tester.pumpAndSettle();
+    final row = (await db.collection('income').doc('ENEL.MI_2026-07-15').get()).data()!;
+    expect(row['taxAmount'], 20);
+  });
 }

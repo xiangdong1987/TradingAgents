@@ -1,4 +1,5 @@
-from assistant.income import income_id, sync_dividends
+from assistant.income import (TAX_PCT_IT, TAX_PCT_US_TOTAL, default_tax_pct,
+                              income_id, opened_floor, sync_dividends)
 from assistant.quotes import get_dividends
 from assistant.store import MemoryStore
 
@@ -22,7 +23,10 @@ def test_records_dividend_as_per_share_times_current_shares():
     assert row["date"] == "2026-07-15"
     assert row["perShare"] == 0.83
     assert row["shares"] == 15
-    assert row["amount"] == 12.45          # 0.83 × 15
+    assert row["amount"] == 12.45          # 0.83 × 15（税前毛额）
+    assert row["taxPct"] == TAX_PCT_US_TOTAL   # 美股 15% 预扣 + 意 26% 叠加
+    assert row["taxAmount"] == round(12.45 * TAX_PCT_US_TOTAL / 100, 4)
+    assert row["creditedCash"] is False        # 自动入账不动现金
     assert row["source"] == "auto"
     assert row["id"] == income_id("MSFT", "2026-07-15")
 
@@ -90,3 +94,62 @@ def test_get_dividends_filters_window_and_skips_isins():
     assert got == [("2026-07-15", 0.83)]
     assert get_dividends("IT0005696320", "2026-07-01", "2026-08-03",
                          _dividends=lambda t, a, b: rows) == []
+
+
+def test_default_tax_pct_by_market():
+    assert default_tax_pct("ENEL.MI") == TAX_PCT_IT
+    assert default_tax_pct("IT0005696320") == TAX_PCT_IT
+    assert default_tax_pct("MSFT") == TAX_PCT_US_TOTAL
+    # 综合税率 = 1 − 0.85 × 0.74 = 37.1%
+    assert TAX_PCT_US_TOTAL == 37.1
+
+
+def test_dividends_before_the_open_date_are_skipped():
+    store = make_store([
+        {"ticker": "KO", "shares": 10, "avgCost": 80.0, "openedAt": "2026-07-01",
+         "updatedAt": "x"},
+    ])
+    divs = [("2026-06-20", 0.5), ("2026-07-15", 0.51)]   # 一笔建仓前、一笔建仓后
+    added = sync_dividends(store, "2026-08-03",
+                           fetch_dividends=lambda t, a, b: [d for d in divs if a <= d[0] <= b])
+    assert added == 1
+    assert store.list_income()[0]["date"] == "2026-07-15"
+
+
+def test_open_floor_falls_back_to_earliest_buy_trade():
+    store = make_store([{"ticker": "KO", "shares": 10, "avgCost": 80.0, "updatedAt": "x"}])
+    store.seed_trades([
+        {"ticker": "KO", "side": "buy", "date": "2026-07-10"},
+        {"ticker": "KO", "side": "buy", "date": "2026-07-25"},
+        {"ticker": "KO", "side": "sell", "date": "2026-05-01"},   # 卖出不算建仓
+    ])
+    assert opened_floor(store, "KO") == "2026-07-10"
+    divs = [("2026-07-05", 0.5), ("2026-07-20", 0.51)]
+    assert sync_dividends(store, "2026-08-03",
+                          fetch_dividends=lambda t, a, b: [d for d in divs if a <= d[0] <= b]) == 1
+    assert store.list_income()[0]["date"] == "2026-07-20"
+
+
+def test_open_date_takes_precedence_over_trades():
+    store = make_store([
+        {"ticker": "KO", "shares": 10, "avgCost": 80.0, "openedAt": "2026-07-20",
+         "updatedAt": "x"},
+    ])
+    store.seed_trades([{"ticker": "KO", "side": "buy", "date": "2026-07-01"}])
+    assert opened_floor(store, "KO") == "2026-07-20"
+
+
+def test_no_open_date_and_no_trades_keeps_the_lookback_window():
+    store = make_store([{"ticker": "KO", "shares": 10, "avgCost": 80.0, "updatedAt": "x"}])
+    assert opened_floor(store, "KO") is None
+    assert sync_dividends(store, "2026-08-03",
+                          fetch_dividends=lambda t, a, b: [("2026-07-20", 0.5)]) == 1
+
+
+def test_open_date_in_the_future_records_nothing():
+    store = make_store([
+        {"ticker": "KO", "shares": 10, "avgCost": 80.0, "openedAt": "2027-01-01",
+         "updatedAt": "x"},
+    ])
+    assert sync_dividends(store, "2026-08-03",
+                          fetch_dividends=lambda t, a, b: [("2026-07-20", 0.5)]) == 0

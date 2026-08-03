@@ -227,4 +227,56 @@ void main() {
       expect(cumulativeReturn(summary, const [], const [], noFx), isNull);
     });
   });
+
+  group('累计收益的税前/税后', () {
+    const quotes = {
+      'ENEL.MI': TickerQuote(close: 10, pctChange: 0),
+      'MSFT': TickerQuote(close: 200, pctChange: 0),
+      'EURUSD=X': TickerQuote(close: 2.0, pctChange: 0),
+    };
+
+    test('tax sums across sells and income, net subtracts it', () {
+      final positions = [
+        Position(ticker: 'ENEL.MI', shares: 100, avgCost: 8, updatedAt: DateTime.utc(2026)),
+      ];
+      const meta = PortfolioMeta(cash: 0, currency: 'EUR');
+      final summary = summarize(positions, meta, quotes);
+      final trades = [
+        Trade(id: 't', ticker: 'ENEL.MI', side: 'sell', shares: 1, price: 1,
+            date: '2026-07-01', realizedPnl: 100, taxAmount: 26),
+      ];
+      final incomes = [
+        const Income(id: 'i', ticker: 'ENEL.MI', date: '2026-07-15',
+            amount: 100, taxAmount: 26),
+      ];
+      final r = cumulativeReturn(summary, trades, incomes, quotes)!;
+      expect(r.totalEur, closeTo(400, 0.001));     // 浮动 200 + 已实现 100 + 分红 100
+      expect(r.taxEur, closeTo(52, 0.001));        // 26 + 26
+      expect(r.netEur, closeTo(348, 0.001));
+      expect(r.totalPct, closeTo(50, 0.01));       // 400 / 800
+      expect(r.netPct, closeTo(43.5, 0.01));       // 348 / 800
+    });
+
+    test('USD taxes convert at the current rate', () {
+      final incomes = [
+        const Income(id: 'i', ticker: 'MSFT', date: '2026-07-15',
+            amount: 100, taxAmount: 37.1),
+      ];
+      expect(incomeTaxEur(incomes, quotes), closeTo(18.55, 0.001));   // 37.1 / 2
+      expect(realizedTaxEur([
+        Trade(id: 't', ticker: 'MSFT', side: 'sell', shares: 1, price: 1,
+            date: '2026-07-01', realizedPnl: 100, taxAmount: 26),
+      ], quotes), closeTo(13, 0.001));
+    });
+
+    test('no tax recorded means net equals gross', () {
+      const summary = PortfolioSummary(
+          cashEur: 0, stockValueEur: 100, costEur: 100, pnlPct: 0);
+      final r = cumulativeReturn(summary, const [], [
+        const Income(id: 'i', ticker: 'ENEL.MI', date: 'd', amount: 50),
+      ], quotes)!;
+      expect(r.taxEur, 0);
+      expect(r.netEur, r.totalEur);
+    });
+  });
 }

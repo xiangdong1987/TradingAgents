@@ -314,4 +314,121 @@ void main() {
       expect(list.first.isAuto, isFalse);
     });
   });
+
+  group('流水编辑与删除', () {
+    Future<void> seed() async {
+      await db.collection('positions').doc('ENEL.MI').set({
+        'ticker': 'ENEL.MI', 'shares': 100.0, 'avgCost': 10.0,
+        'updatedAt': '2026-08-01T00:00:00+00:00',
+      });
+      await db.collection('meta').doc('portfolio').set({'cash': 5000.0, 'currency': 'EUR'});
+    }
+
+    test('sell records capital-gains tax on the gain only', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 10,
+          price: 15, date: '2026-08-03');
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['realizedPnl'], 50.0);            // (15-10) × 10
+      expect(tr['taxAmount'], closeTo(13.0, 0.001));  // 26%
+    });
+
+    test('a losing sell is taxed zero', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 10,
+          price: 8, date: '2026-08-03');
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['realizedPnl'], -20.0);
+      expect(tr['taxAmount'], 0);
+    });
+
+    test('deleting a buy rolls back shares, cost and cash', () async {
+      await seed();   // 100 股 @ €10，现金 5000
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'buy', shares: 100,
+          price: 20, date: '2026-08-03');   // → 200 股 @ €15，现金 3000
+      final id = (await db.collection('trades').get()).docs.single.id;
+      await repo.deleteTrade(id);
+      final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
+      expect(pos['shares'], 100);
+      expect(pos['avgCost'], closeTo(10.0, 0.001));   // 加权平均反解回来
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 5000);
+      expect((await db.collection('trades').get()).docs, isEmpty);
+    });
+
+    test('deleting a sell restores the position and takes the cash back', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 100,
+          price: 15, date: '2026-08-03');   // 清仓，现金 5000+1500
+      final id = (await db.collection('trades').get()).docs.single.id;
+      await repo.deleteTrade(id);
+      final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
+      expect(pos['shares'], 100);
+      expect(pos['avgCost'], closeTo(10.0, 0.001));   // 用 avgCostAtTrade 还原
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 5000);
+    });
+
+    test('editing a trade re-applies it with the new numbers', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 10,
+          price: 15, date: '2026-08-03');
+      final id = (await db.collection('trades').get()).docs.single.id;
+      await repo.updateTrade(id, shares: 20, price: 16, date: '2026-08-04');
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['shares'], 20);
+      expect(tr['price'], 16);
+      expect(tr['date'], '2026-08-04');
+      final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
+      expect(pos['shares'], 80);                      // 100 − 20
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+          5000 + 320);                                // 只算新的那笔
+    });
+
+    test('deleting manual income takes the cash back, auto income does not',
+        () async {
+      await seed();
+      await repo.addIncome(ticker: 'ENEL.MI', amount: 100, date: '2026-08-01');
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 5100);
+      final manualId = (await db.collection('income').get()).docs.single.id;
+      await repo.deleteIncome(manualId);
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 5000);
+
+      await db.collection('income').doc('KO_2026-07-01').set({
+        'ticker': 'KO', 'date': '2026-07-01', 'amount': 50.0,
+        'source': 'auto', 'creditedCash': false,
+      });
+      await repo.deleteIncome('KO_2026-07-01');
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 5000);
+    });
+
+    test('editing manual income adjusts cash by the delta', () async {
+      await seed();
+      await repo.addIncome(ticker: 'ENEL.MI', amount: 100, date: '2026-08-01');
+      final id = (await db.collection('income').get()).docs.single.id;
+      await repo.updateIncome(id, amount: 120, taxAmount: 31.2, date: '2026-08-02');
+      final row = (await db.collection('income').doc(id).get()).data()!;
+      expect(row['amount'], 120);
+      expect(row['taxAmount'], 31.2);
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+          5100 + 20);
+    });
+
+    test('manual income defaults tax by market', () async {
+      await seed();
+      await repo.addIncome(ticker: 'MSFT', amount: 100, date: '2026-08-01',
+          creditCash: false);
+      final row = (await db.collection('income').get()).docs.single.data();
+      expect(row['taxAmount'], closeTo(37.1, 0.001));   // 美股 15% + 意 26%
+    });
+
+    test('setPosition keeps openedAt and other fields (merge write)', () async {
+      await db.collection('positions').doc('KO').set({
+        'ticker': 'KO', 'shares': 10.0, 'avgCost': 80.0,
+        'openedAt': '2026-07-01', 'updatedAt': 'x',
+      });
+      await repo.setPosition(ticker: 'KO', shares: 20, avgCost: 85);
+      final pos = (await db.collection('positions').doc('KO').get()).data()!;
+      expect(pos['shares'], 20);
+      expect(pos['openedAt'], '2026-07-01');   // 没被整文档覆盖掉
+    });
+  });
 }

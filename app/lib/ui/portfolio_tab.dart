@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n.dart';
 import '../logic/portfolio_math.dart';
+import '../logic/tax.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'trades_page.dart';
@@ -239,6 +240,20 @@ class _ReturnCard extends ConsumerWidget {
                 ],
               ),
             ),
+            if (ret.taxEur > 0) ...[
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '${t.afterTax} €${formatMoney(ret.netEur)}'
+                  '${ret.netPct == null ? '' : ' · ${pnlLabel(ret.netPct!)}'}'
+                  '   ${t.tax} €${formatMoney(ret.taxEur)}',
+                  maxLines: 1,
+                  style: TextStyle(fontSize: 12, color: grey),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             Row(
               children: [
@@ -315,6 +330,24 @@ class _ConcentrationCard extends ConsumerWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            // 图例：色点 + 标的 + 权重，让色带每一段都能对上是哪只
+            Wrap(
+              spacing: 14,
+              runSpacing: 6,
+              children: [
+                for (final (i, s) in conc.stats.indexed)
+                  _LegendChip(
+                      color: _palette[i % _palette.length],
+                      label: s.ticker,
+                      pct: s.weightPct),
+                if (conc.cashPct > 0)
+                  _LegendChip(
+                      color: grey.withValues(alpha: 0.35),
+                      label: t.cash,
+                      pct: conc.cashPct),
+              ],
+            ),
             const SizedBox(height: 8),
             FittedBox(
               fit: BoxFit.scaleDown,
@@ -331,6 +364,30 @@ class _ConcentrationCard extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 集中度图例的一项：色点 + 标的 + 权重。
+class _LegendChip extends StatelessWidget {
+  const _LegendChip({required this.color, required this.label, required this.pct});
+  final Color color;
+  final String label;
+  final double pct;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8, height: 8,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+        ),
+        const SizedBox(width: 5),
+        Text('$label ${pct.toStringAsFixed(1)}%',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 }
@@ -437,12 +494,15 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
       text: widget.existing == null ? '' : _fmtPrefill(widget.existing!.shares));
   late final _avgCost = TextEditingController(
       text: widget.existing == null ? '' : _fmtPrefill(widget.existing!.avgCost));
+  late final _openedAt =
+      TextEditingController(text: widget.existing?.openedAt ?? '');
 
   @override
   void dispose() {
     _ticker.dispose();
     _shares.dispose();
     _avgCost.dispose();
+    _openedAt.dispose();
     super.dispose();
   }
 
@@ -453,9 +513,9 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
     if (ticker.isEmpty || shares == null || shares <= 0 || avgCost == null || avgCost <= 0) {
       return;
     }
-    await ref
-        .read(repoProvider)
-        .setPosition(ticker: ticker, shares: shares, avgCost: avgCost);
+    await ref.read(repoProvider).setPosition(
+        ticker: ticker, shares: shares, avgCost: avgCost,
+        openedAt: _openedAt.text.trim());
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -508,6 +568,13 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
             controller: _avgCost,
             decoration: InputDecoration(labelText: t.avgCost),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('posOpenedAt'),
+            controller: _openedAt,
+            decoration: InputDecoration(
+                labelText: t.openedAt, helperText: t.openedAtHint,
+                helperMaxLines: 2),
           ),
         ],
       ),
@@ -657,7 +724,9 @@ class _IncomeDialog extends ConsumerStatefulWidget {
 class _IncomeDialogState extends ConsumerState<_IncomeDialog> {
   final _ticker = TextEditingController();
   final _amount = TextEditingController();
+  final _tax = TextEditingController();
   final _note = TextEditingController();
+  var _taxEdited = false;
   late final _date = TextEditingController(
       text: DateTime.now().toIso8601String().substring(0, 10));
   var _creditCash = true;
@@ -666,6 +735,7 @@ class _IncomeDialogState extends ConsumerState<_IncomeDialog> {
   void dispose() {
     _ticker.dispose();
     _amount.dispose();
+    _tax.dispose();
     _note.dispose();
     _date.dispose();
     super.dispose();
@@ -679,6 +749,7 @@ class _IncomeDialogState extends ConsumerState<_IncomeDialog> {
     final t = ref.read(l10nProvider);
     await ref.read(repoProvider).addIncome(
         ticker: ticker, amount: amount, date: date,
+        taxAmount: double.tryParse(_tax.text),
         note: _note.text.trim(), creditCash: _creditCash);
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -698,8 +769,24 @@ class _IncomeDialogState extends ConsumerState<_IncomeDialog> {
           TextField(
             key: const Key('incomeAmount'),
             controller: _amount,
-            decoration: InputDecoration(labelText: t.incomeAmount),
+            decoration: InputDecoration(labelText: '${t.incomeAmount}（${t.preTax}）'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (v) {
+              // 税额按标的缺省税率预填，可覆盖
+              final gross = double.tryParse(v);
+              final ticker = _ticker.text.trim().toUpperCase();
+              if (gross != null && ticker.isNotEmpty && !_taxEdited) {
+                _tax.text = (gross * defaultIncomeTaxPct(ticker) / 100)
+                    .toStringAsFixed(2);
+              }
+            },
+          ),
+          TextField(
+            key: const Key('incomeTax'),
+            controller: _tax,
+            decoration: InputDecoration(labelText: t.taxAmount),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => _taxEdited = true,
           ),
           TextField(
             key: const Key('incomeDate'),

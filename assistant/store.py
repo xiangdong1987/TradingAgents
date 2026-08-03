@@ -36,6 +36,7 @@ class Store(Protocol):
     def add_income(self, data: dict) -> str: ...
     def has_income(self, ticker: str, date: str) -> bool: ...
     def list_income(self) -> list[dict]: ...
+    def list_trades(self) -> list[dict]: ...
     def get_meta_doc(self, name: str) -> dict | None: ...
     def save_meta_doc(self, name: str, data: dict) -> None: ...
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool: ...
@@ -162,6 +163,13 @@ class MemoryStore:
 
     def list_income(self) -> list[dict]:
         return [{"id": iid, **doc} for iid, doc in self._income.items()]
+
+    def list_trades(self) -> list[dict]:
+        return [dict(d) for d in getattr(self, "_trades", [])]
+
+    def seed_trades(self, items: list[dict]) -> None:
+        """tests only"""
+        self._trades = [dict(i) for i in items]
 
     # --- 通用 meta 文档（同步标记等） ---
     def get_meta_doc(self, name: str) -> dict | None:
@@ -383,6 +391,10 @@ class FirestoreStore:
     def list_income(self) -> list[dict]:
         return [{"id": d.id, **d.to_dict()}
                 for d in self._db.collection("income").stream()]
+
+    def list_trades(self) -> list[dict]:
+        return [{"id": d.id, **d.to_dict()}
+                for d in self._db.collection("trades").stream()]
 
     # --- 通用 meta 文档（同步标记等） ---
     def get_meta_doc(self, name: str) -> dict | None:

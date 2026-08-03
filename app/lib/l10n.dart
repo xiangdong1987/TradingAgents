@@ -159,6 +159,21 @@ class L10n {
   String get recordIncome => isZh ? '记分红/利息' : 'Record income';
   String get incomeAmount => isZh ? '到账金额' : 'Amount received';
   String get incomeNote => isZh ? '备注（可选）' : 'Note (optional)';
+  String get taxAmount => isZh ? '税额' : 'Tax';
+  String get preTax => isZh ? '税前' : 'Pre-tax';
+  String get afterTax => isZh ? '税后' : 'After tax';
+  String get tax => isZh ? '税' : 'Tax';
+  String get openedAt => isZh ? '建仓日（可选）' : 'Opened on (optional)';
+  String get openedAtHint => isZh
+      ? '填了之后分红只从这天起算'
+      : 'Dividends are only counted from this date';
+  String get edit => isZh ? '编辑' : 'Edit';
+  String get deleteTradeTitle => isZh ? '删除这笔记录？' : 'Delete this entry?';
+  String get deleteTradeBody => isZh
+      ? '持仓与现金会同步回滚。'
+      : 'The position and cash will be rolled back accordingly.';
+  String get entryDeleted => isZh ? '已删除记录' : 'Entry deleted';
+  String get entryUpdated => isZh ? '已更新记录' : 'Entry updated';
   String get creditCash => isZh ? '同时加进现金' : 'Also credit cash';
   String get incomeRecorded => isZh ? '已记录分红' : 'Income recorded';
   String get autoEstimate => isZh ? '自动估算' : 'auto';

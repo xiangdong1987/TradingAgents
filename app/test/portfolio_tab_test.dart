@@ -185,8 +185,10 @@ void main() {
       await tester.pumpWidget(_wrap(db));
       await tester.pumpAndSettle();
       expect(find.text('集中度'), findsOneWidget);
-      expect(find.textContaining('最大 50.0%'), findsOneWidget);
-      expect(find.textContaining('现金 50.0%'), findsOneWidget);
+      expect(find.textContaining('最大 50.0%'), findsOneWidget);   // 汇总行
+      // 图例：每段色带都能对上是哪只（持仓一项 + 现金一项）
+      expect(find.text('ENEL.MI 50.0%'), findsOneWidget);
+      expect(find.text('现金 50.0%'), findsOneWidget);
       expect(find.textContaining('50.0%'), findsWidgets);   // 持仓行的权重
     });
 
@@ -359,6 +361,54 @@ void main() {
       expect(row['source'], 'manual');
       expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
           1000 + 450);
+    });
+  });
+
+  group('税前/税后与流水编辑', () {
+    Future<void> seedTaxed(FakeFirebaseFirestore db) async {
+      await db.collection('positions').doc('ENEL.MI').set({
+        'ticker': 'ENEL.MI', 'shares': 100, 'avgCost': 8.0,
+        'updatedAt': '2026-08-01T00:00:00+00:00',
+      });
+      await db.collection('meta').doc('portfolio').set({'cash': 0.0, 'currency': 'EUR'});
+      await db.collection('briefs').doc('2026-08-01').set({
+        'date': '2026-08-01', 'markdownZh': 'x', 'tickers': ['ENEL.MI'],
+        'createdAt': '2026-08-01T00:00:00+00:00',
+        'quotes': {
+          'ENEL.MI': {'close': 10.0, 'pctChange': 1.0},
+          'EURUSD=X': {'close': 1.1, 'pctChange': 0.0},
+        },
+      });
+      await db.collection('income').doc('ENEL.MI_2026-07-15').set({
+        'ticker': 'ENEL.MI', 'date': '2026-07-15', 'amount': 100.0,
+        'taxAmount': 26.0, 'taxPct': 26.0, 'source': 'auto', 'creditedCash': false,
+      });
+    }
+
+    testWidgets('return card shows the after-tax figure and the tax total',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedTaxed(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      // 浮动 200 + 分红 100 = 税前 300；税 26 → 税后 274
+      expect(find.text('€300.00'), findsOneWidget);
+      expect(find.textContaining('税后 €274.00'), findsOneWidget);
+      expect(find.textContaining('税 €26.00'), findsOneWidget);
+    });
+
+    testWidgets('position dialog carries the opened-on date', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedTaxed(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ENEL.MI'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('posOpenedAt')), '2026-07-01');
+      await tester.tap(find.byKey(const Key('posSave')));
+      await tester.pumpAndSettle();
+      expect((await db.collection('positions').doc('ENEL.MI').get()).data()!['openedAt'],
+          '2026-07-01');
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../logic/tax.dart';
 import '../models/models.dart';
 
 String utcNowIso() =>
@@ -113,12 +114,14 @@ class WealthRepo {
   /// runner 自动抓的那批不动现金，避免与券商对账重复计入。
   Future<void> addIncome({
     required String ticker, required double amount, required String date,
-    String? note, bool creditCash = true,
+    double? taxAmount, String? note, bool creditCash = true,
   }) async {
+    final tax = taxAmount ?? amount * defaultIncomeTaxPct(ticker) / 100;
     final batch = _db.batch();
     batch.set(_db.collection('income').doc(), {
-      'ticker': ticker, 'amount': amount, 'date': date,
-      'source': 'manual', if (note != null && note.isNotEmpty) 'note': note,
+      'ticker': ticker, 'amount': amount, 'taxAmount': tax, 'date': date,
+      'source': 'manual', 'creditedCash': creditCash,
+      if (note != null && note.isNotEmpty) 'note': note,
       'createdAt': utcNowIso(),
     });
     if (creditCash) {
@@ -163,7 +166,9 @@ class WealthRepo {
     if (suggestionId != null) trade['suggestionId'] = suggestionId;
 
     if (isSell) {
-      trade['realizedPnl'] = (price - avgCost) * qty;
+      final pnl = (price - avgCost) * qty;
+      trade['realizedPnl'] = pnl;
+      trade['taxAmount'] = defaultSellTax(pnl);   // 盈利按 26% 计，亏损为 0
       trade['avgCostAtTrade'] = avgCost;
       final left = held - qty;
       if (left <= 0) {
@@ -202,11 +207,14 @@ class WealthRepo {
 
   Future<void> setPosition({
     required String ticker, required double shares, required double avgCost,
+    String? openedAt,
   }) async {
+    // merge 写：别把 runner/其他字段（如 openedAt）冲掉
     await _db.collection('positions').doc(ticker).set({
       'ticker': ticker, 'shares': shares, 'avgCost': avgCost,
+      if (openedAt != null && openedAt.isNotEmpty) 'openedAt': openedAt,
       'updatedAt': utcNowIso(),
-    });
+    }, SetOptions(merge: true));
     // 持仓自动加入自选（已在自选里则不动，保留其 deepFreq 设置）。
     final watch = await _db.collection('watchlist').doc(ticker).get();
     if (!watch.exists) await addWatch(ticker);
@@ -347,4 +355,127 @@ class WealthRepo {
       .limit(limit)
       .snapshots()
       .map((q) => [for (final d in q.docs) Suggestion.fromDoc(d.id, d.data())]);
+
+  // --- 流水的编辑与删除 -------------------------------------------------
+  //
+  // 改一笔历史成交要把它对持仓和现金的影响一起改掉，否则统计就和记录脱节。
+  // 做法是「按差额回滚」：先算出这笔原来做了什么，再算新的该做什么，只写差。
+  // 股数与现金是精确可逆的；**成本价的加权平均只有在这笔是最近一次买入时才
+  // 精确可逆**，中间夹了别的买入时是近似——所以删改久远的买入后，成本价建议
+  // 自己核一下（编辑持仓可以直接改）。
+
+  /// 删除一笔成交，并把它对持仓/现金的影响撤回。
+  Future<void> deleteTrade(String id) async {
+    final snap = await _db.collection('trades').doc(id).get();
+    final d = snap.data();
+    if (d == null) return;
+    await _reverseTrade(d);
+    await _db.collection('trades').doc(id).delete();
+  }
+
+  /// 改一笔成交：先撤回旧影响，再按新值重记（同一标的、同方向）。
+  Future<void> updateTrade(String id, {
+    required double shares, required double price, required String date,
+  }) async {
+    final snap = await _db.collection('trades').doc(id).get();
+    final d = snap.data();
+    if (d == null || shares <= 0 || price <= 0) return;
+    final ticker = (d['ticker'] as String?) ?? '';
+    final side = (d['side'] as String?) ?? 'buy';
+    await _reverseTrade(d);
+    await _db.collection('trades').doc(id).delete();
+    await applyTrade(ticker: ticker, side: side, shares: shares,
+        price: price, date: date,
+        suggestionId: d['suggestionId'] as String?);
+  }
+
+  /// 撤回一笔成交对持仓与现金的影响（不删 trade 文档本身）。
+  Future<void> _reverseTrade(Map<String, dynamic> d) async {
+    final ticker = (d['ticker'] as String?) ?? '';
+    if (ticker.isEmpty) return;
+    final qty = (d['shares'] as num?)?.toDouble() ?? 0;
+    final price = (d['price'] as num?)?.toDouble() ?? 0;
+    final isSell = d['side'] == 'sell';
+    final amount = qty * price;
+
+    final posRef = _db.collection('positions').doc(ticker);
+    final posSnap = await posRef.get();
+    final held = (posSnap.data()?['shares'] as num?)?.toDouble() ?? 0;
+    final avgCost = (posSnap.data()?['avgCost'] as num?)?.toDouble() ?? 0;
+    final meta = await _db.collection('meta').doc('portfolio').get();
+    final cash = (meta.data()?['cash'] as num?)?.toDouble() ?? 0;
+
+    final batch = _db.batch();
+    if (isSell) {
+      // 撤回卖出：股数加回、现金扣回，成本价用当时记下的那个
+      final restoredAvg = (d['avgCostAtTrade'] as num?)?.toDouble() ??
+          (avgCost > 0 ? avgCost : price);
+      batch.set(posRef, {
+        'ticker': ticker, 'shares': held + qty, 'avgCost': restoredAvg,
+        'updatedAt': utcNowIso(),
+      }, SetOptions(merge: true));
+      batch.set(_db.collection('meta').doc('portfolio'),
+          {'cash': cash - amount}, SetOptions(merge: true));
+    } else {
+      // 撤回买入：股数减回、现金加回，成本价按加权平均反解
+      final left = held - qty;
+      if (left <= 0) {
+        batch.delete(posRef);
+      } else {
+        final restoredAvg = (held * avgCost - amount) / left;
+        batch.set(posRef, {
+          'ticker': ticker, 'shares': left,
+          'avgCost': restoredAvg > 0 ? restoredAvg : avgCost,
+          'updatedAt': utcNowIso(),
+        }, SetOptions(merge: true));
+      }
+      batch.set(_db.collection('meta').doc('portfolio'),
+          {'cash': cash + amount}, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  /// 改一笔分红/利息。只有当初计入过现金的记录才按差额调整现金。
+  Future<void> updateIncome(String id, {
+    required double amount, required double taxAmount, required String date,
+    String? note,
+  }) async {
+    final ref = _db.collection('income').doc(id);
+    final snap = await ref.get();
+    final d = snap.data();
+    if (d == null) return;
+    final oldAmount = (d['amount'] as num?)?.toDouble() ?? 0;
+    final credited = d['creditedCash'] == true;
+
+    final batch = _db.batch();
+    batch.set(ref, {
+      'amount': amount, 'taxAmount': taxAmount, 'date': date,
+      'note': note ?? '', 'updatedAt': utcNowIso(),
+    }, SetOptions(merge: true));
+    if (credited && amount != oldAmount) {
+      final meta = await _db.collection('meta').doc('portfolio').get();
+      final cash = (meta.data()?['cash'] as num?)?.toDouble() ?? 0;
+      batch.set(_db.collection('meta').doc('portfolio'),
+          {'cash': cash + (amount - oldAmount)}, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  /// 删除一笔分红/利息；当初计入过现金的话把钱扣回去。
+  Future<void> deleteIncome(String id) async {
+    final ref = _db.collection('income').doc(id);
+    final snap = await ref.get();
+    final d = snap.data();
+    if (d == null) return;
+    final batch = _db.batch();
+    if (d['creditedCash'] == true) {
+      final amount = (d['amount'] as num?)?.toDouble() ?? 0;
+      final meta = await _db.collection('meta').doc('portfolio').get();
+      final cash = (meta.data()?['cash'] as num?)?.toDouble() ?? 0;
+      batch.set(_db.collection('meta').doc('portfolio'),
+          {'cash': cash - amount}, SetOptions(merge: true));
+    }
+    batch.delete(ref);
+    await batch.commit();
+  }
 }

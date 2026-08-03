@@ -40,17 +40,21 @@ class WatchItem {
 }
 
 class Position {
-  const Position({required this.ticker, required this.shares, required this.avgCost, required this.updatedAt});
+  const Position({required this.ticker, required this.shares, required this.avgCost,
+      required this.updatedAt, this.openedAt});
   final String ticker;
   final double shares;
   final double avgCost;
   final DateTime updatedAt;
+  /// 建仓日（YYYY-MM-DD，可选）。分红只从这天起算——runner 用它当下限。
+  final String? openedAt;
 
   factory Position.fromDoc(String id, Map<String, dynamic> d) => Position(
         ticker: _s(d['ticker'], id),
         shares: _d(d['shares']),
         avgCost: _d(d['avgCost']),
         updatedAt: _t(d['updatedAt']),
+        openedAt: d['openedAt'] as String?,
       );
 }
 
@@ -59,7 +63,7 @@ class Position {
 class Trade {
   const Trade({required this.id, required this.ticker, required this.side,
       required this.shares, required this.price, required this.date,
-      this.realizedPnl, this.avgCostAtTrade, this.suggestionId});
+      this.realizedPnl, this.taxAmount, this.avgCostAtTrade, this.suggestionId});
   final String id;
   final String ticker;
   final String side; // buy | sell
@@ -67,11 +71,16 @@ class Trade {
   final double price;
   final String date; // YYYY-MM-DD
   final double? realizedPnl;
+  final double? taxAmount;      // 卖出的资本利得税（原币，亏损为 0）
   final double? avgCostAtTrade;
   final String? suggestionId;
 
   bool get isSell => side == 'sell';
   double get amount => shares * price;
+
+  /// 税后已实现盈亏（原币）。没有税额记录时等于税前。
+  double? get realizedNet =>
+      realizedPnl == null ? null : realizedPnl! - (taxAmount ?? 0);
 
   factory Trade.fromDoc(String id, Map<String, dynamic> d) => Trade(
         id: id,
@@ -81,6 +90,7 @@ class Trade {
         price: _d(d['price']),
         date: _s(d['date']),
         realizedPnl: _dOrNull(d['realizedPnl']),
+        taxAmount: _dOrNull(d['taxAmount']),
         avgCostAtTrade: _dOrNull(d['avgCostAtTrade']),
         suggestionId: d['suggestionId'] as String?,
       );
@@ -91,27 +101,37 @@ class Trade {
 /// manual = 用户按券商实际到账手录（ISIN 单券付息只能走这条）。
 class Income {
   const Income({required this.id, required this.ticker, required this.date,
-      required this.amount, this.perShare, this.shares,
-      this.source = 'manual', this.note});
+      required this.amount, this.taxAmount = 0, this.taxPct,
+      this.perShare, this.shares, this.source = 'manual',
+      this.creditedCash = false, this.note});
   final String id;
   final String ticker;
   final String date; // YYYY-MM-DD
-  final double amount;
+  final double amount;          // 税前毛额
+  final double taxAmount;       // 预扣税（原币）
+  final double? taxPct;
   final double? perShare;
   final double? shares;
   final String source;
+  final bool creditedCash;      // 入账时是否已加进现金（手录默认加，自动不加）
   final String? note;
 
   bool get isAuto => source == 'auto';
+
+  /// 税后到手金额（原币）。
+  double get net => amount - taxAmount;
 
   factory Income.fromDoc(String id, Map<String, dynamic> d) => Income(
         id: id,
         ticker: _s(d['ticker']),
         date: _s(d['date']),
         amount: _d(d['amount']),
+        taxAmount: _d(d['taxAmount']),
+        taxPct: _dOrNull(d['taxPct']),
         perShare: _dOrNull(d['perShare']),
         shares: _dOrNull(d['shares']),
         source: _s(d['source'], 'manual'),
+        creditedCash: d['creditedCash'] == true,
         note: d['note'] as String?,
       );
 }

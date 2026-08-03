@@ -53,6 +53,8 @@ class TradesPage extends ConsumerWidget {
                 final prefix = currencyPrefix(tr.ticker);
                 final sideColor = tr.isSell ? pnlColor(-1) : pnlColor(1);
                 return ListTile(
+                  onTap: () => showDialog<void>(
+                      context: context, builder: (_) => _TradeEditDialog(trade: tr)),
                   leading: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -86,10 +88,15 @@ class TradesPage extends ConsumerWidget {
                       MoneyText(tr.amount, size: 15, prefix: prefix, color: grey),
                       if (tr.realizedPnl case final pnl?) ...[
                         const SizedBox(height: 2),
+                        // 盈亏与税后合在一行：trailing 槽高度只够两行，三行会溢出
                         Text(
-                          '${pnl >= 0 ? '+' : ''}$prefix${formatMoney(pnl)}',
+                          [
+                            '${pnl >= 0 ? '+' : ''}$prefix${formatMoney(pnl)}',
+                            if ((tr.taxAmount ?? 0) > 0)
+                              '${t.afterTax} $prefix${formatMoney(tr.realizedNet!)}',
+                          ].join(' · '),
                           style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: FontWeight.w700,
                               color: pnlColor(pnl)),
                         ),
@@ -108,6 +115,8 @@ Widget _incomeTile(BuildContext context, L10n t, Color grey, Income inc) {
   final prefix = currencyPrefix(inc.ticker);
   const color = Color(0xFF0A84FF);   // 蓝色区别于买(绿)/卖(红)
   return ListTile(
+    onTap: () => showDialog<void>(
+        context: context, builder: (_) => _IncomeEditDialog(income: inc)),
     leading: Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -129,8 +138,224 @@ Widget _incomeTile(BuildContext context, L10n t, Color grey, Income inc) {
       ].join(' · '),
       style: TextStyle(color: grey, fontSize: 12),
     ),
-    trailing: Text('+$prefix${formatMoney(inc.amount)}',
-        style: const TextStyle(
-            fontSize: 15, fontWeight: FontWeight.w700, color: color)),
+    trailing: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text('+$prefix${formatMoney(inc.amount)}',
+            style: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w700, color: color)),
+        if (inc.taxAmount > 0)
+          Text('${t.afterTax} $prefix${formatMoney(inc.net)}',
+              style: TextStyle(fontSize: 11, color: grey)),
+      ],
+    ),
   );
 }
+
+/// 成交编辑：改股数/价格/日期，或删除。两者都会按差额回滚持仓与现金。
+class _TradeEditDialog extends ConsumerStatefulWidget {
+  const _TradeEditDialog({required this.trade});
+  final Trade trade;
+
+  @override
+  ConsumerState<_TradeEditDialog> createState() => _TradeEditDialogState();
+}
+
+class _TradeEditDialogState extends ConsumerState<_TradeEditDialog> {
+  late final _shares = TextEditingController(text: _num(widget.trade.shares));
+  late final _price =
+      TextEditingController(text: widget.trade.price.toStringAsFixed(2));
+  late final _date = TextEditingController(text: widget.trade.date);
+
+  @override
+  void dispose() {
+    _shares.dispose();
+    _price.dispose();
+    _date.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final shares = double.tryParse(_shares.text);
+    final price = double.tryParse(_price.text);
+    if (shares == null || shares <= 0 || price == null || price <= 0) return;
+    final t = ref.read(l10nProvider);
+    await ref.read(repoProvider).updateTrade(widget.trade.id,
+        shares: shares, price: price, date: _date.text.trim());
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text(t.entryUpdated)));
+  }
+
+  Future<void> _delete() async {
+    final t = ref.read(l10nProvider);
+    final ok = await _confirmDelete(context, t);
+    if (ok != true || !mounted) return;
+    await ref.read(repoProvider).deleteTrade(widget.trade.id);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text(t.entryDeleted)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
+    final tr = widget.trade;
+    return AlertDialog(
+      title: Text('${tr.isSell ? t.sell : t.buy} ${tr.ticker}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            key: const Key('editShares'),
+            controller: _shares,
+            decoration: InputDecoration(labelText: t.shares),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('editPrice'),
+            controller: _price,
+            decoration: InputDecoration(
+                labelText: '${t.priceLabel} (${currencyPrefix(tr.ticker)})'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('editDate'),
+            controller: _date,
+            decoration: InputDecoration(labelText: t.tradeDate),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            key: const Key('editDelete'), onPressed: _delete, child: Text(t.delete)),
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
+        FilledButton(
+            key: const Key('editSave'), onPressed: _save, child: Text(t.save)),
+      ],
+    );
+  }
+}
+
+/// 分红编辑：改金额/税额/日期/备注，或删除。当初计入现金的记录会同步调整现金。
+class _IncomeEditDialog extends ConsumerStatefulWidget {
+  const _IncomeEditDialog({required this.income});
+  final Income income;
+
+  @override
+  ConsumerState<_IncomeEditDialog> createState() => _IncomeEditDialogState();
+}
+
+class _IncomeEditDialogState extends ConsumerState<_IncomeEditDialog> {
+  late final _amount =
+      TextEditingController(text: widget.income.amount.toStringAsFixed(2));
+  late final _tax =
+      TextEditingController(text: widget.income.taxAmount.toStringAsFixed(2));
+  late final _date = TextEditingController(text: widget.income.date);
+  late final _note = TextEditingController(text: widget.income.note ?? '');
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _tax.dispose();
+    _date.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final amount = double.tryParse(_amount.text);
+    final tax = double.tryParse(_tax.text) ?? 0;
+    if (amount == null || amount <= 0) return;
+    final t = ref.read(l10nProvider);
+    await ref.read(repoProvider).updateIncome(widget.income.id,
+        amount: amount, taxAmount: tax, date: _date.text.trim(),
+        note: _note.text.trim());
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text(t.entryUpdated)));
+  }
+
+  Future<void> _delete() async {
+    final t = ref.read(l10nProvider);
+    final ok = await _confirmDelete(context, t);
+    if (ok != true || !mounted) return;
+    await ref.read(repoProvider).deleteIncome(widget.income.id);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text(t.entryDeleted)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
+    final prefix = currencyPrefix(widget.income.ticker);
+    return AlertDialog(
+      title: Text('${t.incomeLabel} ${widget.income.ticker}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            key: const Key('editIncomeAmount'),
+            controller: _amount,
+            decoration:
+                InputDecoration(labelText: '${t.preTax} ($prefix)'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('editIncomeTax'),
+            controller: _tax,
+            decoration: InputDecoration(labelText: '${t.taxAmount} ($prefix)'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('editIncomeDate'),
+            controller: _date,
+            decoration: InputDecoration(labelText: t.tradeDate),
+          ),
+          TextField(
+            key: const Key('editIncomeNote'),
+            controller: _note,
+            decoration: InputDecoration(labelText: t.incomeNote),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            key: const Key('editIncomeDelete'),
+            onPressed: _delete,
+            child: Text(t.delete)),
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
+        FilledButton(
+            key: const Key('editIncomeSave'), onPressed: _save, child: Text(t.save)),
+      ],
+    );
+  }
+}
+
+Future<bool?> _confirmDelete(BuildContext context, L10n t) => showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t.deleteTradeTitle),
+        content: Text(t.deleteTradeBody),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false), child: Text(t.cancel)),
+          TextButton(
+              key: const Key('confirmDelete'),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(t.delete)),
+        ],
+      ),
+    );
+
+/// 整数股数不带小数点显示（10.5 保留、11.0 显示 11）。
+String _num(double v) =>
+    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
