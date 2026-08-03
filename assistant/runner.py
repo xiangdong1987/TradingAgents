@@ -26,7 +26,7 @@ ZOMBIE_AFTER_HOURS = 2
 def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
              graph_factory=None, fetch_quote=None, fetch_news=None,
              trading_day_resolver=None, fetch_calendar=None,
-             watch_interval=None) -> int:
+             fetch_dividends=None, watch_interval=None) -> int:
     """One wake-up: zombie cleanup -> user jobs -> scheduled jobs -> review.
 
     Each stage is isolated in its own try/except; a stage failure is logged
@@ -41,6 +41,8 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     from assistant.events import refresh_calendar
     from assistant.chat import answer_chat
     from assistant.strategies import engine as strategy_engine
+    from assistant.income import sync_dividends
+    from assistant.store import utc_now_iso
 
     if now_et is None:
         now_et = datetime.now(ZoneInfo("America/New_York"))
@@ -146,6 +148,22 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
             logger.info("calendar refreshed: %d event(s)", n)
     except Exception:
         logger.exception("calendar refresh stage failed")
+
+    # 3.7 dividend sync: once per day — 每股分红 × 当前持股，落 income 供累计收益统计。
+    # 不动现金（现金由用户按券商对账维护，避免重复计入）；ISIN 单券 Yahoo 无数据，靠 App 手录。
+    try:
+        today_str = now_et.strftime("%Y-%m-%d")
+        marker = store.get_meta_doc("income_sync") if hasattr(store, "get_meta_doc") else None
+        if marker is None or marker.get("date") != today_str:
+            kwargs = {} if fetch_dividends is None else {"fetch_dividends": fetch_dividends}
+            n = sync_dividends(store, today_str, **kwargs)
+            if n:
+                logger.info("dividend sync: %d new income row(s)", n)
+            if hasattr(store, "save_meta_doc"):
+                store.save_meta_doc("income_sync", {"date": today_str,
+                                                    "updatedAt": utc_now_iso()})
+    except Exception:
+        logger.exception("dividend sync stage failed")
 
     # 4. review
     reviewed = 0

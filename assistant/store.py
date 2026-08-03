@@ -33,6 +33,11 @@ class Store(Protocol):
     def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None: ...
     def all_analyses(self) -> list[dict]: ...
     def merge_analysis_fields(self, analysis_id: str, fields: dict) -> None: ...
+    def add_income(self, data: dict) -> str: ...
+    def has_income(self, ticker: str, date: str) -> bool: ...
+    def list_income(self) -> list[dict]: ...
+    def get_meta_doc(self, name: str) -> dict | None: ...
+    def save_meta_doc(self, name: str, data: dict) -> None: ...
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool: ...
     def save_suggestion(self, data: dict) -> str: ...
     def update_suggestion(self, sid: str, fields: dict) -> None: ...
@@ -60,6 +65,7 @@ class MemoryStore:
         self._analyses: dict[str, dict] = {}
         self._suggestions: dict[str, dict] = {}
         self._jobs: dict[str, dict] = {}
+        self._income: dict[str, dict] = {}
         self._ids = itertools.count(1)
 
     def _next_id(self) -> str:
@@ -142,6 +148,30 @@ class MemoryStore:
 
     def all_analyses(self) -> list[dict]:
         return [{"id": aid, **doc} for aid, doc in self._analyses.items()]
+
+    # --- income (分红 / 利息) ---
+    def add_income(self, data: dict) -> str:
+        doc = dict(data)
+        iid = doc.pop("id", None) or self._next_id()
+        self._income[iid] = doc
+        return iid
+
+    def has_income(self, ticker: str, date: str) -> bool:
+        return any(d.get("ticker") == ticker and d.get("date") == date
+                   for d in self._income.values())
+
+    def list_income(self) -> list[dict]:
+        return [{"id": iid, **doc} for iid, doc in self._income.items()]
+
+    # --- 通用 meta 文档（同步标记等） ---
+    def get_meta_doc(self, name: str) -> dict | None:
+        doc = getattr(self, "_meta_docs", {}).get(name)
+        return dict(doc) if doc is not None else None
+
+    def save_meta_doc(self, name: str, data: dict) -> None:
+        if not hasattr(self, "_meta_docs"):
+            self._meta_docs: dict[str, dict] = {}
+        self._meta_docs[name] = dict(data)
 
     def merge_analysis_fields(self, analysis_id: str, fields: dict) -> None:
         """Firestore set(merge=True) 语义：map 字段按 key 深合并。"""
@@ -331,6 +361,36 @@ class FirestoreStore:
     def all_analyses(self) -> list[dict]:
         return [{"id": d.id, **d.to_dict()}
                 for d in self._db.collection("analyses").stream()]
+
+    # --- income (分红 / 利息) ---
+    def add_income(self, data: dict) -> str:
+        doc = dict(data)
+        iid = doc.pop("id", None)
+        ref = (self._db.collection("income").document(iid) if iid
+               else self._db.collection("income").document())
+        ref.set(doc)
+        return ref.id
+
+    def has_income(self, ticker: str, date: str) -> bool:
+        snap = self._db.collection("income").document(f"{ticker}_{date}").get()
+        if snap.exists:
+            return True
+        # 手工补录的条目 id 是自动生成的，回退到字段查询
+        q = (self._db.collection("income")
+             .where("ticker", "==", ticker).where("date", "==", date).limit(1))
+        return len(list(q.stream())) > 0
+
+    def list_income(self) -> list[dict]:
+        return [{"id": d.id, **d.to_dict()}
+                for d in self._db.collection("income").stream()]
+
+    # --- 通用 meta 文档（同步标记等） ---
+    def get_meta_doc(self, name: str) -> dict | None:
+        snap = self._db.collection("meta").document(name).get()
+        return snap.to_dict() if snap.exists else None
+
+    def save_meta_doc(self, name: str, data: dict) -> None:
+        self._db.collection("meta").document(name).set(data, merge=True)
 
     def merge_analysis_fields(self, analysis_id: str, fields: dict) -> None:
         self._db.collection("analyses").document(analysis_id).set(fields, merge=True)

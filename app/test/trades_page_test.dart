@@ -52,4 +52,26 @@ void main() {
     final oldY = tester.getTopLeft(find.text('OLD')).dy;
     expect(newY, lessThan(oldY));
   });
+
+  testWidgets('income rows appear in the timeline with source and per-share',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('trades').add({
+      'ticker': 'MSFT', 'side': 'buy', 'shares': 5.0, 'price': 400.0,
+      'date': '2026-07-01',
+    });
+    await db.collection('income').doc('MSFT_2026-08-02').set({
+      'ticker': 'MSFT', 'date': '2026-08-02', 'amount': 12.45,
+      'perShare': 0.83, 'shares': 15.0, 'source': 'auto',
+    });
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    expect(find.text('分红利息'), findsOneWidget);
+    expect(find.text('+\$12.45'), findsOneWidget);
+    expect(find.textContaining('自动估算'), findsOneWidget);
+    expect(find.textContaining('0.8300/股'), findsOneWidget);
+    // 分红日期更新 → 排在买入之前
+    expect(tester.getTopLeft(find.text('分红利息')).dy,
+        lessThan(tester.getTopLeft(find.text('买入')).dy));
+  });
 }

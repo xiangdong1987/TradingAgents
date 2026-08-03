@@ -284,4 +284,34 @@ void main() {
       expect(list.first.amount, 12);
     });
   });
+
+  group('addIncome', () {
+    test('records income and credits cash by default', () async {
+      await db.collection('meta').doc('portfolio').set({'cash': 100.0, 'currency': 'EUR'});
+      await repo.addIncome(ticker: 'IT0005696320', amount: 450.0,
+          date: '2026-08-01', note: '半年付息');
+      final row = (await db.collection('income').get()).docs.single.data();
+      expect(row['ticker'], 'IT0005696320');
+      expect(row['amount'], 450.0);
+      expect(row['source'], 'manual');
+      expect(row['note'], '半年付息');
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 550.0);
+    });
+
+    test('creditCash false leaves cash alone', () async {
+      await db.collection('meta').doc('portfolio').set({'cash': 100.0, 'currency': 'EUR'});
+      await repo.addIncome(ticker: 'KO', amount: 5.0, date: '2026-08-01',
+          creditCash: false);
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 100.0);
+      expect((await db.collection('income').get()).docs, hasLength(1));
+    });
+
+    test('income stream returns newest first', () async {
+      await repo.addIncome(ticker: 'KO', amount: 1, date: '2026-07-01', creditCash: false);
+      await repo.addIncome(ticker: 'KO', amount: 2, date: '2026-08-01', creditCash: false);
+      final list = await repo.income().first;
+      expect(list.map((i) => i.date), ['2026-08-01', '2026-07-01']);
+      expect(list.first.isAuto, isFalse);
+    });
+  });
 }

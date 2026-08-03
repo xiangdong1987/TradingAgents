@@ -152,6 +152,19 @@ class L10n {
       ? '最大 $top% · 前三 $top3% · 现金 $cash%'
       : 'Top $top% · Top-3 $top3% · cash $cash%';
   String get tradeHistory => isZh ? '交易记录' : 'Trade history';
+  String get cumulativeReturn => isZh ? '累计收益' : 'Cumulative return';
+  String get unrealized => isZh ? '浮动' : 'Unrealized';
+  String get realized => isZh ? '已实现' : 'Realized';
+  String get incomeLabel => isZh ? '分红利息' : 'Income';
+  String get recordIncome => isZh ? '记分红/利息' : 'Record income';
+  String get incomeAmount => isZh ? '到账金额' : 'Amount received';
+  String get incomeNote => isZh ? '备注（可选）' : 'Note (optional)';
+  String get creditCash => isZh ? '同时加进现金' : 'Also credit cash';
+  String get incomeRecorded => isZh ? '已记录分红' : 'Income recorded';
+  String get autoEstimate => isZh ? '自动估算' : 'auto';
+  String get buyTitleNew => isZh ? '买入（记成交）' : 'Buy (record trade)';
+  String get enterExisting => isZh ? '录入已有持仓' : 'Enter existing holding';
+  String buyTitle(String ticker) => isZh ? '买入 $ticker' : 'Buy $ticker';
   String get noTrades => isZh ? '还没有成交记录' : 'No trades yet';
   String get tradeRecorded => isZh ? '已记录成交' : 'Trade recorded';
   String get tradeDate => isZh ? '成交日期' : 'Trade date';

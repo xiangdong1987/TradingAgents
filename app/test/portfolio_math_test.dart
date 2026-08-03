@@ -169,4 +169,62 @@ void main() {
       expect(realizedPnlEur(const [], quotes), 0);
     });
   });
+
+  group('incomeEur / cumulativeReturn', () {
+    const quotes = {
+      'ENEL.MI': TickerQuote(close: 10, pctChange: 0),
+      'MSFT': TickerQuote(close: 200, pctChange: 0),
+      'EURUSD=X': TickerQuote(close: 2.0, pctChange: 0),
+    };
+    Income inc(String ticker, double amount) => Income(
+        id: 'i', ticker: ticker, date: '2026-07-15', amount: amount);
+
+    test('EUR income counts as-is, USD income converts', () {
+      // €30 + $40/2 = €50
+      expect(incomeEur([inc('ENEL.MI', 30), inc('MSFT', 40)], quotes),
+          closeTo(50, 0.001));
+    });
+
+    test('missing fx with USD income yields null', () {
+      expect(incomeEur([inc('MSFT', 40)], const {}), isNull);
+    });
+
+    test('cumulative return sums unrealized, realized and income', () {
+      // 持仓 ENEL.MI 100 股 @成本 8 现价 10 → 浮动 +€200
+      final positions = [
+        Position(ticker: 'ENEL.MI', shares: 100, avgCost: 8, updatedAt: DateTime.utc(2026)),
+      ];
+      const meta = PortfolioMeta(cash: 0, currency: 'EUR');
+      final summary = summarize(positions, meta, quotes);
+      final trades = [
+        Trade(id: 't', ticker: 'ENEL.MI', side: 'sell', shares: 1, price: 1,
+            date: '2026-07-01', realizedPnl: 50),
+      ];
+      final r = cumulativeReturn(summary, trades, [inc('ENEL.MI', 30)], quotes)!;
+      expect(r.unrealizedEur, closeTo(200, 0.001));
+      expect(r.realizedEur, closeTo(50, 0.001));
+      expect(r.incomeEur, closeTo(30, 0.001));
+      expect(r.totalEur, closeTo(280, 0.001));
+      expect(r.costEur, closeTo(800, 0.001));           // 100 × 8
+      expect(r.totalPct, closeTo(35, 0.01));            // 280 / 800
+    });
+
+    test('no cost basis leaves the percentage null but keeps the amount', () {
+      const empty = PortfolioSummary(
+          cashEur: 0, stockValueEur: 0, costEur: 0, pnlPct: null);
+      final r = cumulativeReturn(empty, const [], [inc('ENEL.MI', 30)], quotes)!;
+      expect(r.totalEur, closeTo(30, 0.001));
+      expect(r.totalPct, isNull);
+    });
+
+    test('unconvertible fx makes the whole summary null', () {
+      final positions = [
+        Position(ticker: 'MSFT', shares: 1, avgCost: 100, updatedAt: DateTime.utc(2026)),
+      ];
+      const meta = PortfolioMeta(cash: 0, currency: 'EUR');
+      const noFx = {'MSFT': TickerQuote(close: 200, pctChange: 0)};
+      final summary = summarize(positions, meta, noFx);
+      expect(cumulativeReturn(summary, const [], const [], noFx), isNull);
+    });
+  });
 }

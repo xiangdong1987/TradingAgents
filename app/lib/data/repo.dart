@@ -100,6 +100,36 @@ class WealthRepo {
       .snapshots()
       .map((q) => [for (final d in q.docs) Trade.fromDoc(d.id, d.data())]);
 
+  /// 分红 / 利息流水（新到旧）。
+  Stream<List<Income>> income({int limit = 200}) => _db
+      .collection('income')
+      .orderBy('date', descending: true)
+      .limit(limit)
+      .snapshots()
+      .map((q) => [for (final d in q.docs) Income.fromDoc(d.id, d.data())]);
+
+  /// 手工补录分红/利息（ISIN 单券付息只能走这条：Yahoo 没有单券数据）。
+  /// 默认同时加进现金——手录代表钱已到账，是用户主动的记账动作；
+  /// runner 自动抓的那批不动现金，避免与券商对账重复计入。
+  Future<void> addIncome({
+    required String ticker, required double amount, required String date,
+    String? note, bool creditCash = true,
+  }) async {
+    final batch = _db.batch();
+    batch.set(_db.collection('income').doc(), {
+      'ticker': ticker, 'amount': amount, 'date': date,
+      'source': 'manual', if (note != null && note.isNotEmpty) 'note': note,
+      'createdAt': utcNowIso(),
+    });
+    if (creditCash) {
+      final meta = await _db.collection('meta').doc('portfolio').get();
+      final cash = (meta.data()?['cash'] as num?)?.toDouble() ?? 0.0;
+      batch.set(_db.collection('meta').doc('portfolio'),
+          {'cash': cash + amount}, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
   /// 记一笔成交并**同步更新持仓与现金**（一次 WriteBatch，要么全成要么全不成）。
   ///
   /// - 买入：股数累加、成本价按加权平均重算、现金扣减成交额；

@@ -20,6 +20,7 @@ final positionsProvider = StreamProvider<List<Position>>((ref) => ref.watch(repo
 final portfolioMetaProvider =
     StreamProvider<PortfolioMeta>((ref) => ref.watch(repoProvider).portfolioMeta());
 final tradesProvider = StreamProvider<List<Trade>>((ref) => ref.watch(repoProvider).trades());
+final incomeProvider = StreamProvider<List<Income>>((ref) => ref.watch(repoProvider).income());
 final calendarEventsProvider =
     StreamProvider<List<CalendarEvent>>((ref) => ref.watch(repoProvider).calendarEvents());
 final chatsProvider =

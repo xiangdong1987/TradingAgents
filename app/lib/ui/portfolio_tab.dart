@@ -22,7 +22,8 @@ class PortfolioTab extends ConsumerWidget {
     final quotes = ref.watch(latestBriefProvider).value?.quotes ?? const {};
     final summary = summarize(positions, meta, quotes);
     final trades = ref.watch(tradesProvider).value ?? const <Trade>[];
-    final realized = realizedPnlEur(trades, quotes);
+    final incomes = ref.watch(incomeProvider).value ?? const <Income>[];
+    final ret = cumulativeReturn(summary, trades, incomes, quotes);
     final conc = concentration(positions, meta, quotes);
     final weights = {for (final s in conc?.stats ?? const []) s.ticker: s.weightPct};
 
@@ -71,14 +72,6 @@ class PortfolioTab extends ConsumerWidget {
                                         fontWeight: FontWeight.w700),
                                   )),
                         const SizedBox(width: 28),
-                        const SizedBox(width: 24),
-                        _OverviewColumn(
-                            label: t.realizedPnl,
-                            value: realized == null
-                                ? const Text('—')
-                                : MoneyText(realized, size: 15, prefix: '€',
-                                    color: realized == 0 ? null : pnlColor(realized))),
-                        const SizedBox(width: 24),
                         _OverviewColumn(
                             label: t.cashTapHint,
                             value: summary.cashEur == null
@@ -91,6 +84,7 @@ class PortfolioTab extends ConsumerWidget {
               ),
             ),
           ),
+          if (ret != null) _ReturnCard(ret: ret),
           if (conc != null) _ConcentrationCard(conc: conc),
           if (positions.isEmpty)
             Padding(
@@ -144,9 +138,49 @@ class PortfolioTab extends ConsumerWidget {
           const SizedBox(height: 80),
         ],
       ),
+      // 「+」给三条路：买入记成交（改现金）、录入已有持仓（不动现金）、补录分红
       floatingActionButton: FloatingActionButton(
-        onPressed: () => showDialog<void>(
-            context: context, builder: (_) => const _PositionDialog()),
+        key: const Key('addFab'),
+        onPressed: () => showModalBottomSheet<void>(
+          context: context,
+          builder: (sheet) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  key: const Key('fabBuy'),
+                  leading: const Icon(Icons.trending_up),
+                  title: Text(t.buyTitleNew),
+                  onTap: () {
+                    Navigator.of(sheet).pop();
+                    showDialog<void>(
+                        context: context, builder: (_) => const _BuyDialog());
+                  },
+                ),
+                ListTile(
+                  key: const Key('fabEnter'),
+                  leading: const Icon(Icons.edit_note),
+                  title: Text(t.enterExisting),
+                  onTap: () {
+                    Navigator.of(sheet).pop();
+                    showDialog<void>(
+                        context: context, builder: (_) => const _PositionDialog());
+                  },
+                ),
+                ListTile(
+                  key: const Key('fabIncome'),
+                  leading: const Icon(Icons.savings_outlined),
+                  title: Text(t.recordIncome),
+                  onTap: () {
+                    Navigator.of(sheet).pop();
+                    showDialog<void>(
+                        context: context, builder: (_) => const _IncomeDialog());
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
         child: const Icon(Icons.add),
       ),
     );
@@ -160,6 +194,75 @@ class PortfolioTab extends ConsumerWidget {
     final pnl = (q.close - p.avgCost) / p.avgCost * 100;
     return PriceWithPill(
         price: q.close, pct: pnl, prefix: currencyPrefix(p.ticker));
+  }
+}
+
+/// 累计收益卡：一个大数 + 收益率，下面拆成浮动 / 已实现 / 分红三项。
+/// 简单加总口径（非年化、非资金加权），分母是当前持仓成本。
+class _ReturnCard extends ConsumerWidget {
+  const _ReturnCard({required this.ret});
+  final ReturnSummary ret;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+    final total = ret.totalEur;
+    final pct = ret.totalPct;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t.cumulativeReturn, style: TextStyle(fontSize: 12, color: grey)),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  MoneyText(total,
+                      size: 24, weight: FontWeight.w800, prefix: '€',
+                      color: pnlColor(total)),
+                  if (pct != null) ...[
+                    const SizedBox(width: 8),
+                    Text(pnlLabel(pct),
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: pnlColor(pct))),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _OverviewColumn(
+                    label: t.unrealized,
+                    value: MoneyText(ret.unrealizedEur, size: 14, prefix: '€',
+                        color: pnlColor(ret.unrealizedEur))),
+                const SizedBox(width: 24),
+                _OverviewColumn(
+                    label: t.realized,
+                    value: MoneyText(ret.realizedEur, size: 14, prefix: '€',
+                        color: ret.realizedEur == 0 ? grey : pnlColor(ret.realizedEur))),
+                const SizedBox(width: 24),
+                _OverviewColumn(
+                    key: const Key('incomeStat'),
+                    label: t.incomeLabel,
+                    value: MoneyText(ret.incomeEur, size: 14, prefix: '€',
+                        color: ret.incomeEur == 0 ? grey : pnlColor(ret.incomeEur))),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -235,7 +338,7 @@ class _ConcentrationCard extends ConsumerWidget {
 /// Small gray label above a compact value — one cell of the secondary
 /// pnl / cash row under the hero total.
 class _OverviewColumn extends StatelessWidget {
-  const _OverviewColumn({required this.label, required this.value});
+  const _OverviewColumn({super.key, required this.label, required this.value});
   final String label;
   final Widget value;
 
@@ -414,6 +517,17 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
               key: const Key('posDelete'), onPressed: _delete, child: Text(t.delete)),
         if (!isNew)
           FilledButton.tonal(
+            key: const Key('posBuy'),
+            onPressed: () {
+              final p = widget.existing!;
+              Navigator.of(context).pop();
+              showDialog<void>(
+                  context: context, builder: (_) => _BuyDialog(position: p));
+            },
+            child: Text(t.buy),
+          ),
+        if (!isNew)
+          FilledButton.tonal(
             key: const Key('posSell'),
             onPressed: () {
               final p = widget.existing!;
@@ -426,6 +540,191 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
         TextButton(
             onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
         FilledButton(key: const Key('posSave'), onPressed: _save, child: Text(t.save)),
+      ],
+    );
+  }
+}
+
+/// 买入对话框：新标的走 ticker 输入，加仓则锁定标的、价格缺省当前行情。
+/// 提交走 `repo.applyTrade`——记流水 + 加股数（成本价按加权平均重算）+ 扣现金。
+class _BuyDialog extends ConsumerStatefulWidget {
+  const _BuyDialog({this.position});
+  final Position? position;   // null = 买一只新标的
+
+  @override
+  ConsumerState<_BuyDialog> createState() => _BuyDialogState();
+}
+
+class _BuyDialogState extends ConsumerState<_BuyDialog> {
+  final _ticker = TextEditingController();
+  final _shares = TextEditingController();
+  final _price = TextEditingController();
+  late final _date = TextEditingController(
+      text: DateTime.now().toIso8601String().substring(0, 10));
+  var _prefilledPrice = false;
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _shares.dispose();
+    _price.dispose();
+    _date.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final ticker =
+        widget.position?.ticker ?? _ticker.text.trim().toUpperCase();
+    final shares = double.tryParse(_shares.text);
+    final price = double.tryParse(_price.text);
+    final date = _date.text.trim();
+    if (ticker.isEmpty || shares == null || shares <= 0 || price == null ||
+        price <= 0 || date.isEmpty) {
+      return;
+    }
+    final t = ref.read(l10nProvider);
+    await ref.read(repoProvider).applyTrade(
+        ticker: ticker, side: 'buy', shares: shares, price: price, date: date);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text(t.tradeRecorded)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
+    final existing = widget.position;
+    final quotes = ref.watch(latestBriefProvider).value?.quotes ?? const {};
+    if (!_prefilledPrice && existing != null) {
+      final q = quotes[existing.ticker];
+      if (q != null) {
+        _price.text = q.close.toStringAsFixed(2);
+        _prefilledPrice = true;
+      }
+    }
+    final prefix = existing == null ? '' : ' (${currencyPrefix(existing.ticker)})';
+    return AlertDialog(
+      title: Text(existing == null ? t.buyTitleNew : t.buyTitle(existing.ticker)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (existing == null)
+            TickerField(fieldKey: const Key('buyTicker'), controller: _ticker)
+          else
+            Text(t.heldShares(_fmtPrefill(existing.shares)),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          TextField(
+            key: const Key('buyShares'),
+            controller: _shares,
+            decoration: InputDecoration(labelText: t.shares),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('buyPrice'),
+            controller: _price,
+            decoration: InputDecoration(labelText: '${t.priceLabel}$prefix'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('buyDate'),
+            controller: _date,
+            decoration: InputDecoration(labelText: t.tradeDate),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
+        FilledButton(
+            key: const Key('buyConfirm'), onPressed: _submit, child: Text(t.buy)),
+      ],
+    );
+  }
+}
+
+/// 手工补录分红/利息。ISIN 单券付息只能走这条（Yahoo 无单券数据）。
+class _IncomeDialog extends ConsumerStatefulWidget {
+  const _IncomeDialog();
+
+  @override
+  ConsumerState<_IncomeDialog> createState() => _IncomeDialogState();
+}
+
+class _IncomeDialogState extends ConsumerState<_IncomeDialog> {
+  final _ticker = TextEditingController();
+  final _amount = TextEditingController();
+  final _note = TextEditingController();
+  late final _date = TextEditingController(
+      text: DateTime.now().toIso8601String().substring(0, 10));
+  var _creditCash = true;
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _amount.dispose();
+    _note.dispose();
+    _date.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final ticker = _ticker.text.trim().toUpperCase();
+    final amount = double.tryParse(_amount.text);
+    final date = _date.text.trim();
+    if (ticker.isEmpty || amount == null || amount <= 0 || date.isEmpty) return;
+    final t = ref.read(l10nProvider);
+    await ref.read(repoProvider).addIncome(
+        ticker: ticker, amount: amount, date: date,
+        note: _note.text.trim(), creditCash: _creditCash);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text(t.incomeRecorded)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
+    return AlertDialog(
+      title: Text(t.recordIncome),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TickerField(fieldKey: const Key('incomeTicker'), controller: _ticker),
+          TextField(
+            key: const Key('incomeAmount'),
+            controller: _amount,
+            decoration: InputDecoration(labelText: t.incomeAmount),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('incomeDate'),
+            controller: _date,
+            decoration: InputDecoration(labelText: t.tradeDate),
+          ),
+          TextField(
+            key: const Key('incomeNote'),
+            controller: _note,
+            decoration: InputDecoration(labelText: t.incomeNote),
+          ),
+          SwitchListTile(
+            key: const Key('incomeCreditCash'),
+            contentPadding: EdgeInsets.zero,
+            title: Text(t.creditCash, style: const TextStyle(fontSize: 14)),
+            value: _creditCash,
+            onChanged: (v) => setState(() => _creditCash = v),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
+        FilledButton(
+            key: const Key('incomeConfirm'), onPressed: _submit, child: Text(t.save)),
       ],
     );
   }

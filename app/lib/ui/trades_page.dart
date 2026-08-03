@@ -1,11 +1,13 @@
 // app/lib/ui/trades_page.dart
-/// 交易流水：从持仓页进入，按日期倒序列出每一笔买卖。
-/// 卖出行右侧显示这笔的已实现盈亏（标的原币），买入行显示成交额。
+/// 流水：从持仓页进入，按日期倒序列出买卖成交与分红/利息。
+/// 卖出行右侧显示这笔的已实现盈亏（标的原币），买入行显示成交额，
+/// 分红行显示到账金额（runner 自动抓的标「自动估算」，税前毛额）。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'widgets/pnl.dart';
@@ -17,11 +19,17 @@ class TradesPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = ref.watch(l10nProvider);
     final trades = ref.watch(tradesProvider).value ?? const <Trade>[];
+    final incomes = ref.watch(incomeProvider).value ?? const <Income>[];
     final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+    // 成交与分红混排成一条时间线（各自流已按日期倒序，合并后再排一次）
+    final rows = <(String, Object)>[
+      for (final t in trades) (t.date, t),
+      for (final i in incomes) (i.date, i),
+    ]..sort((a, b) => b.$1.compareTo(a.$1));
 
     return Scaffold(
       appBar: AppBar(title: Text(t.tradeHistory)),
-      body: trades.isEmpty
+      body: rows.isEmpty
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(32),
@@ -36,10 +44,12 @@ class TradesPage extends ConsumerWidget {
               ),
             )
           : ListView.separated(
-              itemCount: trades.length,
+              itemCount: rows.length,
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, i) {
-                final tr = trades[i];
+                final entry = rows[i].$2;
+                if (entry is Income) return _incomeTile(context, t, grey, entry);
+                final tr = entry as Trade;
                 final prefix = currencyPrefix(tr.ticker);
                 final sideColor = tr.isSell ? pnlColor(-1) : pnlColor(1);
                 return ListTile(
@@ -91,4 +101,36 @@ class TradesPage extends ConsumerWidget {
             ),
     );
   }
+}
+
+/// 分红/利息行：左侧「分红」标签，右侧到账金额；自动抓取的标注来源。
+Widget _incomeTile(BuildContext context, L10n t, Color grey, Income inc) {
+  final prefix = currencyPrefix(inc.ticker);
+  const color = Color(0xFF0A84FF);   // 蓝色区别于买(绿)/卖(红)
+  return ListTile(
+    leading: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(t.incomeLabel,
+          style: const TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+    ),
+    title: Text(inc.ticker,
+        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+    subtitle: Text(
+      [
+        inc.date,
+        if (inc.perShare case final ps?) '$prefix${ps.toStringAsFixed(4)}/股',
+        if (inc.isAuto) t.autoEstimate,
+        if ((inc.note ?? '').isNotEmpty) inc.note!,
+      ].join(' · '),
+      style: TextStyle(color: grey, fontSize: 12),
+    ),
+    trailing: Text('+$prefix${formatMoney(inc.amount)}',
+        style: const TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w700, color: color)),
+  );
 }

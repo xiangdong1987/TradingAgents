@@ -81,6 +81,36 @@ def get_ohlc_history(ticker: str, end_date: str, days: int = 200,
     return _history(ticker, start, end_date)
 
 
+def _yf_dividends(ticker: str, start: str, end: str) -> list[tuple[str, float]]:
+    """升序 [(除息日, 每股分红)]，区间含两端。Lazy import。
+
+    yfinance 的 ``.dividends`` 是每股金额（税前），ETF 的分派也走同一字段。
+    单只债券（ISIN）Yahoo 没有覆盖，付息只能手工补录。
+    """
+    import yfinance as yf
+
+    series = yf.Ticker(ticker).dividends
+    if series is None or series.empty:
+        return []
+    idx = series.index
+    if getattr(idx, "tz", None) is not None:
+        series = series.tz_localize(None)
+    out = []
+    for ts, amount in series.items():
+        day = ts.strftime("%Y-%m-%d")
+        if start <= day <= end and float(amount) > 0:
+            out.append((day, float(amount)))
+    return sorted(out)
+
+
+def get_dividends(ticker: str, start_date: str, end_date: str,
+                  _dividends=_yf_dividends) -> list[tuple[str, float]]:
+    """区间内的每股分红（升序）。ISIN 直接返回空——Yahoo 无单券覆盖。"""
+    if is_isin(ticker):
+        return []
+    return _dividends(ticker, start_date, end_date)
+
+
 def get_return_pct(ticker: str, start_date: str, end_date: str, _history=_yf_history) -> float:
     rows = _history(ticker, start_date, end_date)
     if len(rows) < 2:

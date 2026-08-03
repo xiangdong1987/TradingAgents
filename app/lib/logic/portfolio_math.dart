@@ -103,6 +103,56 @@ double? realizedPnlEur(List<Trade> trades, Map<String, TickerQuote> quotes) {
   return sum;
 }
 
+/// 累计分红/利息合计（EUR）。口径与 [realizedPnlEur] 一致：原币金额按
+/// **当前**汇率折算，不追溯历史汇率。
+double? incomeEur(List<Income> incomes, Map<String, TickerQuote> quotes) {
+  final rate = quotes['EURUSD=X']?.close;
+  var sum = 0.0;
+  for (final i in incomes) {
+    if (isEurListing(i.ticker)) {
+      sum += i.amount;
+    } else {
+      if (rate == null || rate == 0) return null;
+      sum += i.amount / rate;
+    }
+  }
+  return sum;
+}
+
+/// 累计收益（简单加总口径）：浮动盈亏 + 已实现盈亏 + 累计分红利息。
+/// 收益率的分母是**当前持仓成本**——不是资金加权，也不年化，所以它回答的是
+/// 「这些钱到今天为止一共赚了多少」，不是「年化几个点」。任一项无法折算
+/// （缺汇率）时整体为 null。
+class ReturnSummary {
+  const ReturnSummary({required this.unrealizedEur, required this.realizedEur,
+      required this.incomeEur, required this.costEur});
+  final double unrealizedEur;
+  final double realizedEur;
+  final double incomeEur;
+  final double? costEur;
+
+  double get totalEur => unrealizedEur + realizedEur + incomeEur;
+  double? get totalPct =>
+      (costEur == null || costEur! <= 0) ? null : totalEur / costEur! * 100;
+}
+
+ReturnSummary? cumulativeReturn(
+  PortfolioSummary summary,
+  List<Trade> trades,
+  List<Income> incomes,
+  Map<String, TickerQuote> quotes,
+) {
+  final stock = summary.stockValueEur;
+  final cost = summary.costEur;
+  final realized = realizedPnlEur(trades, quotes);
+  final income = incomeEur(incomes, quotes);
+  if (stock == null || cost == null || realized == null || income == null) {
+    return null;
+  }
+  return ReturnSummary(unrealizedEur: stock - cost, realizedEur: realized,
+      incomeEur: income, costEur: cost);
+}
+
 /// Missing per-ticker quotes fall back to cost basis for valuation; `pnlPct`
 /// is only populated once at least one held ticker has a live quote.
 PortfolioSummary summarize(

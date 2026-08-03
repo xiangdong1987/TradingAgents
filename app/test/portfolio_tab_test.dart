@@ -57,7 +57,13 @@ void main() {
     // 与 NVDA 自身 +33.83% 、AAPL 自身 -10.00% 均不同，可唯一定位总览行文本。
     expect(find.textContaining('€4,000.00'), findsOneWidget);    // 现金（欧元）
     expect(find.textContaining('€5,966.00'), findsOneWidget);    // 总市值（欧元）
-    expect(find.textContaining('22.88'), findsOneWidget);        // 总浮动盈亏
+    // 收益卡在「无卖出、无分红」时累计收益率与浮动盈亏 % 相同，会出现两处；
+    // 这里收窄到概览卡子树内，断言仍然唯一。
+    expect(
+        find.descendant(
+            of: find.byKey(const Key('cashCard')),
+            matching: find.textContaining('22.88')),
+        findsOneWidget);                                             // 总浮动盈亏
     expect(find.textContaining('NVDA'), findsWidgets);
     expect(find.textContaining('AAPL'), findsWidgets);
   });
@@ -81,6 +87,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('暂无持仓'), findsOneWidget);
     await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    // FAB 现在先弹三选一（买入记成交 / 录入已有持仓 / 记分红），选录入
+    await tester.tap(find.byKey(const Key('fabEnter')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('posTicker')), 'aapl');
     await tester.enterText(find.byKey(const Key('posShares')), '5');
@@ -228,7 +237,8 @@ void main() {
       expect(tr['realizedPnl'], 80.0);        // (10 - 8) * 40
     });
 
-    testWidgets('realized pnl from past sells shows in the overview', (tester) async {
+    testWidgets('realized pnl from past sells shows in the return card',
+        (tester) async {
       final db = FakeFirebaseFirestore();
       await seedEur(db);
       await db.collection('trades').add({
@@ -237,7 +247,7 @@ void main() {
       });
       await tester.pumpWidget(_wrap(db));
       await tester.pumpAndSettle();
-      expect(find.text('已实现盈亏'), findsOneWidget);
+      expect(find.text('已实现'), findsOneWidget);      // 收益卡的拆解项
       expect(find.text('€40.00'), findsOneWidget);
     });
 
@@ -252,6 +262,103 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('tradeHistoryEntry')), findsOneWidget);
       expect(find.text('交易记录'), findsOneWidget);
+    });
+  });
+
+  group('买入与累计收益', () {
+    Future<void> seedEur2(FakeFirebaseFirestore db) async {
+      await db.collection('positions').doc('ENEL.MI').set({
+        'ticker': 'ENEL.MI', 'shares': 100, 'avgCost': 8.0,
+        'updatedAt': '2026-08-01T00:00:00+00:00',
+      });
+      await db.collection('meta').doc('portfolio').set({'cash': 1000.0, 'currency': 'EUR'});
+      await db.collection('briefs').doc('2026-08-01').set({
+        'date': '2026-08-01', 'markdownZh': 'x', 'tickers': ['ENEL.MI'],
+        'createdAt': '2026-08-01T00:00:00+00:00',
+        'quotes': {
+          'ENEL.MI': {'close': 10.0, 'pctChange': 1.0},
+          'EURUSD=X': {'close': 1.1, 'pctChange': 0.0},
+        },
+      });
+    }
+
+    testWidgets('cumulative return card breaks out unrealized / realized / income',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedEur2(db);
+      await db.collection('trades').add({
+        'ticker': 'ENEL.MI', 'side': 'sell', 'shares': 10.0, 'price': 12.0,
+        'date': '2026-07-20', 'realizedPnl': 40.0,
+      });
+      await db.collection('income').doc('ENEL.MI_2026-07-15').set({
+        'ticker': 'ENEL.MI', 'date': '2026-07-15', 'amount': 30.0,
+        'perShare': 0.3, 'shares': 100.0, 'source': 'auto',
+      });
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      expect(find.text('累计收益'), findsOneWidget);
+      // 浮动 +€200（100×(10−8)）+ 已实现 €40 + 分红 €30 = €270，成本 €800 → +33.75%
+      expect(find.text('€270.00'), findsOneWidget);
+      expect(find.text('+33.75%'), findsOneWidget);
+      expect(find.text('€200.00'), findsOneWidget);
+      expect(find.text('€40.00'), findsOneWidget);
+      expect(find.text('€30.00'), findsOneWidget);
+    });
+
+    testWidgets('buying from the position dialog re-weights cost and debits cash',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedEur2(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ENEL.MI'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('posBuy')));
+      await tester.pumpAndSettle();
+      expect(find.text('10.00'), findsWidgets);          // 价格缺省当前行情
+      await tester.enterText(find.byKey(const Key('buyShares')), '100');
+      await tester.tap(find.byKey(const Key('buyConfirm')));
+      await tester.pumpAndSettle();
+      final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
+      expect(pos['shares'], 200);
+      expect(pos['avgCost'], 9.0);                       // (100×8 + 100×10)/200
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+          1000 - 1000);
+      expect((await db.collection('trades').get()).docs.single.data()['side'], 'buy');
+    });
+
+    testWidgets('FAB offers buy / enter-existing / record-income', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedEur2(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('addFab')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('fabBuy')), findsOneWidget);
+      expect(find.byKey(const Key('fabEnter')), findsOneWidget);
+      expect(find.byKey(const Key('fabIncome')), findsOneWidget);
+    });
+
+    testWidgets('manual income entry records the row and credits cash',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedEur2(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('addFab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('fabIncome')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('incomeTicker')), 'IT0005696320');
+      await tester.enterText(find.byKey(const Key('incomeAmount')), '450');
+      await tester.tap(find.byKey(const Key('incomeConfirm')));
+      await tester.pumpAndSettle();
+      final row = (await db.collection('income').get()).docs.single.data();
+      expect(row['ticker'], 'IT0005696320');
+      expect(row['amount'], 450.0);
+      expect(row['source'], 'manual');
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+          1000 + 450);
     });
   });
 }

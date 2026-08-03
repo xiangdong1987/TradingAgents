@@ -86,6 +86,36 @@ class Trade {
       );
 }
 
+/// 一笔分红 / 债券利息。金额单位是**标的计价货币**（US=USD、.MI 与 IT-ISIN=EUR）。
+/// `source`: auto = runner 按 yfinance 每股分红 × 当前持股估算（税前毛额）；
+/// manual = 用户按券商实际到账手录（ISIN 单券付息只能走这条）。
+class Income {
+  const Income({required this.id, required this.ticker, required this.date,
+      required this.amount, this.perShare, this.shares,
+      this.source = 'manual', this.note});
+  final String id;
+  final String ticker;
+  final String date; // YYYY-MM-DD
+  final double amount;
+  final double? perShare;
+  final double? shares;
+  final String source;
+  final String? note;
+
+  bool get isAuto => source == 'auto';
+
+  factory Income.fromDoc(String id, Map<String, dynamic> d) => Income(
+        id: id,
+        ticker: _s(d['ticker']),
+        date: _s(d['date']),
+        amount: _d(d['amount']),
+        perShare: _dOrNull(d['perShare']),
+        shares: _dOrNull(d['shares']),
+        source: _s(d['source'], 'manual'),
+        note: d['note'] as String?,
+      );
+}
+
 class PortfolioMeta {
   const PortfolioMeta({required this.cash, required this.currency});
   final double cash;
