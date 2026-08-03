@@ -140,6 +140,22 @@ class L10n {
   String positionSubtitle(String shares, String cost) =>
       isZh ? '$shares 股 · 成本 $cost' : '$shares sh · cost $cost';
   String get editCash => isZh ? '编辑现金' : 'Edit cash';
+  String get sell => isZh ? '卖出' : 'Sell';
+  String get buy => isZh ? '买入' : 'Buy';
+  String sellTitle(String ticker) => isZh ? '卖出 $ticker' : 'Sell $ticker';
+  String get sellAll => isZh ? '全部' : 'All';
+  String heldShares(String shares) => isZh ? '持有 $shares 股' : 'Holding $shares sh';
+  String get realizedPnl => isZh ? '已实现盈亏' : 'Realized P&L';
+  String get weight => isZh ? '权重' : 'Weight';
+  String get concentration => isZh ? '集中度' : 'Concentration';
+  String concentrationDetail(String top, String top3, String cash) => isZh
+      ? '最大 $top% · 前三 $top3% · 现金 $cash%'
+      : 'Top $top% · Top-3 $top3% · cash $cash%';
+  String get tradeHistory => isZh ? '交易记录' : 'Trade history';
+  String get noTrades => isZh ? '还没有成交记录' : 'No trades yet';
+  String get tradeRecorded => isZh ? '已记录成交' : 'Trade recorded';
+  String get tradeDate => isZh ? '成交日期' : 'Trade date';
+  String get fromSuggestion => isZh ? '来自建议' : 'From suggestion';
   String deletePositionTitle(String ticker) =>
       isZh ? '删除 $ticker 持仓？' : 'Delete $ticker position?';
   String get irreversible => isZh ? '此操作不可恢复。' : 'This cannot be undone.';

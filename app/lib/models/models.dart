@@ -54,6 +54,38 @@ class Position {
       );
 }
 
+/// 一笔成交。`realizedPnl` 只有卖出才有，按卖出当时的持仓成本算，
+/// 单位是**标的计价货币**（US=USD、.MI=EUR）——汇总时才折 EUR。
+class Trade {
+  const Trade({required this.id, required this.ticker, required this.side,
+      required this.shares, required this.price, required this.date,
+      this.realizedPnl, this.avgCostAtTrade, this.suggestionId});
+  final String id;
+  final String ticker;
+  final String side; // buy | sell
+  final double shares;
+  final double price;
+  final String date; // YYYY-MM-DD
+  final double? realizedPnl;
+  final double? avgCostAtTrade;
+  final String? suggestionId;
+
+  bool get isSell => side == 'sell';
+  double get amount => shares * price;
+
+  factory Trade.fromDoc(String id, Map<String, dynamic> d) => Trade(
+        id: id,
+        ticker: _s(d['ticker']),
+        side: _s(d['side'], 'buy'),
+        shares: _d(d['shares']),
+        price: _d(d['price']),
+        date: _s(d['date']),
+        realizedPnl: _dOrNull(d['realizedPnl']),
+        avgCostAtTrade: _dOrNull(d['avgCostAtTrade']),
+        suggestionId: d['suggestionId'] as String?,
+      );
+}
+
 class PortfolioMeta {
   const PortfolioMeta({required this.cash, required this.currency});
   final double cash;

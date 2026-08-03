@@ -36,6 +36,73 @@ class PortfolioSummary {
       : cashEur! + stockValueEur!;
 }
 
+/// 单笔持仓的市值与占组合权重（权重分母含现金，与总市值口径一致）。
+class PositionStat {
+  const PositionStat({required this.ticker, required this.valueEur, required this.weightPct});
+  final String ticker;
+  final double valueEur;
+  final double weightPct;
+}
+
+/// 集中度：各持仓权重（降序）+ 最大单一持仓 / 前三大合计 / 现金占比。
+class Concentration {
+  const Concentration({required this.stats, required this.cashPct});
+  final List<PositionStat> stats; // 按权重降序
+  final double cashPct;
+
+  double get topPct => stats.isEmpty ? 0 : stats.first.weightPct;
+  double get top3Pct =>
+      stats.take(3).fold(0.0, (sum, s) => sum + s.weightPct);
+}
+
+/// 逐笔持仓的 EUR 市值与权重。汇率缺失导致某笔无法折算时整体返回 null
+/// （与 [summarize] 同样的保守口径：宁可显示 — 也不给错数）。
+Concentration? concentration(
+  List<Position> positions,
+  PortfolioMeta meta,
+  Map<String, TickerQuote> quotes,
+) {
+  final s = summarize(positions, meta, quotes);
+  final total = s.totalEur;
+  if (total == null || total <= 0) return null;
+
+  final rate = quotes['EURUSD=X']?.close;
+  double? toEur(String ticker, double native) => isEurListing(ticker)
+      ? native
+      : ((rate == null || rate == 0) ? null : native / rate);
+
+  final stats = <PositionStat>[];
+  for (final p in positions) {
+    final priceNative = quotes[p.ticker]?.close ?? p.avgCost;
+    final v = toEur(p.ticker, p.shares * priceNative);
+    if (v == null) return null;
+    stats.add(PositionStat(
+        ticker: p.ticker, valueEur: v, weightPct: v / total * 100));
+  }
+  stats.sort((a, b) => b.weightPct.compareTo(a.weightPct));
+  return Concentration(
+      stats: stats, cashPct: (s.cashEur ?? 0) / total * 100);
+}
+
+/// 已实现盈亏合计（EUR）。每笔卖出的 `realizedPnl` 是标的原币，这里按
+/// **当前**汇率折算 USD 部分——历史汇率不追溯，和市值口径保持一致；
+/// 汇率缺失且存在 USD 标的时返回 null。
+double? realizedPnlEur(List<Trade> trades, Map<String, TickerQuote> quotes) {
+  final rate = quotes['EURUSD=X']?.close;
+  var sum = 0.0;
+  for (final t in trades) {
+    final pnl = t.realizedPnl;
+    if (pnl == null) continue;
+    if (isEurListing(t.ticker)) {
+      sum += pnl;
+    } else {
+      if (rate == null || rate == 0) return null;
+      sum += pnl / rate;
+    }
+  }
+  return sum;
+}
+
 /// Missing per-ticker quotes fall back to cost basis for valuation; `pnlPct`
 /// is only populated once at least one held ticker has a live quote.
 PortfolioSummary summarize(

@@ -92,6 +92,84 @@ class WealthRepo {
     await batch.commit();
   }
 
+  /// 最近的成交流水（新到旧）。
+  Stream<List<Trade>> trades({int limit = 200}) => _db
+      .collection('trades')
+      .orderBy('date', descending: true)
+      .limit(limit)
+      .snapshots()
+      .map((q) => [for (final d in q.docs) Trade.fromDoc(d.id, d.data())]);
+
+  /// 记一笔成交并**同步更新持仓与现金**（一次 WriteBatch，要么全成要么全不成）。
+  ///
+  /// - 买入：股数累加、成本价按加权平均重算、现金扣减成交额；
+  /// - 卖出：股数递减（清零则删除持仓文档）、成本价不变、现金加回成交额，
+  ///   并按卖出当时的成本价记下这笔的已实现盈亏（标的原币）。
+  ///
+  /// 卖出股数超过持仓时按持仓全额处理（避免负股数）。`suggestionId` 非空时
+  /// 顺带把那条建议标记为已采纳。
+  Future<void> applyTrade({
+    required String ticker, required String side, required double shares,
+    required double price, required String date, String? suggestionId,
+  }) async {
+    final posRef = _db.collection('positions').doc(ticker);
+    final snap = await posRef.get();
+    final held = snap.exists ? (snap.data()?['shares'] as num?)?.toDouble() ?? 0.0 : 0.0;
+    final avgCost = snap.exists ? (snap.data()?['avgCost'] as num?)?.toDouble() ?? 0.0 : 0.0;
+
+    final isSell = side == 'sell';
+    final qty = isSell ? (shares > held ? held : shares) : shares;
+    if (qty <= 0) return;
+
+    final meta = await _db.collection('meta').doc('portfolio').get();
+    final cash = (meta.data()?['cash'] as num?)?.toDouble() ?? 0.0;
+    final amount = qty * price;
+
+    final batch = _db.batch();
+    final trade = <String, dynamic>{
+      'ticker': ticker, 'side': side, 'shares': qty, 'price': price,
+      'date': date, 'createdAt': utcNowIso(),
+    };
+    if (suggestionId != null) trade['suggestionId'] = suggestionId;
+
+    if (isSell) {
+      trade['realizedPnl'] = (price - avgCost) * qty;
+      trade['avgCostAtTrade'] = avgCost;
+      final left = held - qty;
+      if (left <= 0) {
+        batch.delete(posRef);
+      } else {
+        batch.set(posRef, {
+          'ticker': ticker, 'shares': left, 'avgCost': avgCost,
+          'updatedAt': utcNowIso(),
+        }, SetOptions(merge: true));
+      }
+    } else {
+      final newShares = held + qty;
+      // 加权平均成本：老持仓成本额 + 本次成交额，摊到新股数上
+      final newAvg = (held * avgCost + amount) / newShares;
+      batch.set(posRef, {
+        'ticker': ticker, 'shares': newShares, 'avgCost': newAvg,
+        'updatedAt': utcNowIso(),
+      }, SetOptions(merge: true));
+    }
+
+    batch.set(_db.collection('trades').doc(), trade);
+    batch.set(_db.collection('meta').doc('portfolio'),
+        {'cash': isSell ? cash + amount : cash - amount}, SetOptions(merge: true));
+    if (suggestionId != null) {
+      batch.update(_db.collection('suggestions').doc(suggestionId),
+          {'status': 'accepted', 'resolvedAt': utcNowIso()});
+    }
+    await batch.commit();
+
+    // 买入的新标的顺带进自选（与 setPosition 同一习惯）。
+    if (!isSell) {
+      final watch = await _db.collection('watchlist').doc(ticker).get();
+      if (!watch.exists) await addWatch(ticker);
+    }
+  }
+
   Future<void> setPosition({
     required String ticker, required double shares, required double avgCost,
   }) async {

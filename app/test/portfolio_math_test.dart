@@ -93,4 +93,80 @@ void main() {
     expect(isEurListing('IT0001247391'), isTrue);   // 意大利债券按欧元
     expect(isEurListing('US0378331005'), isFalse);  // 非 IT 前缀 ISIN 不按欧元
   });
+
+  group('concentration', () {
+    // 现金 €1000；ENEL.MI 100 股 @ €10 = €1000；MSFT 10 股 @ $200 = €1000（汇率 2.0）
+    // 总值 €3000 → 每项各占 1/3
+    final positions = [
+      Position(ticker: 'ENEL.MI', shares: 100, avgCost: 8, updatedAt: DateTime.utc(2026)),
+      Position(ticker: 'MSFT', shares: 10, avgCost: 150, updatedAt: DateTime.utc(2026)),
+    ];
+    const meta = PortfolioMeta(cash: 1000, currency: 'EUR');
+    const quotes = {
+      'ENEL.MI': TickerQuote(close: 10, pctChange: 0),
+      'MSFT': TickerQuote(close: 200, pctChange: 0),
+      'EURUSD=X': TickerQuote(close: 2.0, pctChange: 0),
+    };
+
+    test('weights use the EUR total including cash', () {
+      final c = concentration(positions, meta, quotes)!;
+      expect(c.stats, hasLength(2));
+      expect(c.stats[0].weightPct, closeTo(33.33, 0.01));
+      expect(c.stats[1].weightPct, closeTo(33.33, 0.01));
+      expect(c.cashPct, closeTo(33.33, 0.01));
+      expect(c.topPct, closeTo(33.33, 0.01));
+      expect(c.top3Pct, closeTo(66.67, 0.01));
+    });
+
+    test('stats are sorted by weight descending', () {
+      final big = [
+        Position(ticker: 'ENEL.MI', shares: 500, avgCost: 8, updatedAt: DateTime.utc(2026)),
+        Position(ticker: 'MSFT', shares: 1, avgCost: 150, updatedAt: DateTime.utc(2026)),
+      ];
+      final c = concentration(big, meta, quotes)!;
+      expect(c.stats.first.ticker, 'ENEL.MI');
+      expect(c.stats.first.weightPct, greaterThan(c.stats.last.weightPct));
+    });
+
+    test('missing fx with a USD holding yields null', () {
+      const noFx = {'ENEL.MI': TickerQuote(close: 10, pctChange: 0)};
+      expect(concentration(positions, meta, noFx), isNull);
+    });
+
+    test('empty portfolio yields null', () {
+      expect(concentration(const [], const PortfolioMeta(cash: 0, currency: 'EUR'), quotes),
+          isNull);
+    });
+  });
+
+  group('realizedPnlEur', () {
+    const quotes = {'EURUSD=X': TickerQuote(close: 2.0, pctChange: 0)};
+    Trade sell(String ticker, double pnl) => Trade(
+        id: 't', ticker: ticker, side: 'sell', shares: 1, price: 1,
+        date: '2026-08-01', realizedPnl: pnl);
+
+    test('sums EUR listings as-is and converts USD ones', () {
+      // €100 + $200/2 = €200
+      expect(realizedPnlEur([sell('ENEL.MI', 100), sell('MSFT', 200)], quotes),
+          closeTo(200, 0.001));
+    });
+
+    test('buys contribute nothing', () {
+      final buy = Trade(id: 'b', ticker: 'MSFT', side: 'buy', shares: 1,
+          price: 100, date: '2026-08-01');
+      expect(realizedPnlEur([buy], quotes), 0);
+    });
+
+    test('losses are negative', () {
+      expect(realizedPnlEur([sell('ENEL.MI', -50)], quotes), closeTo(-50, 0.001));
+    });
+
+    test('missing fx with a USD trade yields null', () {
+      expect(realizedPnlEur([sell('MSFT', 200)], const {}), isNull);
+    });
+
+    test('no trades is zero', () {
+      expect(realizedPnlEur(const [], quotes), 0);
+    });
+  });
 }

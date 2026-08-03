@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../l10n.dart';
 import '../models/models.dart';
 import '../providers.dart';
+import 'widgets/markdown.dart';
 import 'widgets/pnl.dart' show pnlColor;
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -81,7 +82,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                               copyText: c.answerFor(lang),
                               child: MarkdownBody(
                                   data: c.answerFor(lang) ?? '',
-                                  styleSheet: _chatMarkdown(context))),
+                                  styleSheet: compactMarkdown(context))),
                           'failed' => _Bubble.left(
                               child: Text(t.chatFailed,
                                   style: TextStyle(color: pnlColor(-1)))),
@@ -125,29 +126,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       ],
     );
   }
-}
-
-/// 气泡内 Markdown 紧凑样式：标题降为正文级加粗，分隔线细化，间距收紧。
-MarkdownStyleSheet _chatMarkdown(BuildContext context) {
-  final theme = Theme.of(context);
-  final body = theme.textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
-  TextStyle h(double size) =>
-      body.copyWith(fontSize: size, fontWeight: FontWeight.w700, height: 1.4);
-  return MarkdownStyleSheet.fromTheme(theme).copyWith(
-    p: body.copyWith(height: 1.5),
-    h1: h(17),
-    h2: h(16),
-    h3: h(15),
-    h4: h(14),
-    h5: h(14),
-    h6: h(14),
-    listBullet: body,
-    blockSpacing: 8,
-    horizontalRuleDecoration: BoxDecoration(
-      border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5)),
-    ),
-  );
 }
 
 class _Bubble extends ConsumerWidget {

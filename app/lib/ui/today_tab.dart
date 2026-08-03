@@ -10,6 +10,7 @@ import '../l10n.dart';
 import '../logic/portfolio_math.dart';
 import '../models/models.dart';
 import '../providers.dart';
+import 'widgets/markdown.dart';
 import 'widgets/pnl.dart';
 import 'widgets/stream_error.dart';
 import 'widgets/suggestion_card.dart';
@@ -60,7 +61,9 @@ class TodayTab extends ConsumerWidget {
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: MarkdownBody(data: b.markdownFor(lang)),
+                        child: MarkdownBody(
+                            data: b.markdownFor(lang),
+                            styleSheet: compactMarkdown(context)),
                       ),
                     ],
                   ),

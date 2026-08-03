@@ -6,6 +6,7 @@ import '../l10n.dart';
 import '../logic/portfolio_math.dart';
 import '../models/models.dart';
 import '../providers.dart';
+import 'trades_page.dart';
 import 'widgets/pnl.dart';
 import 'widgets/ticker_field.dart';
 
@@ -20,6 +21,10 @@ class PortfolioTab extends ConsumerWidget {
         const PortfolioMeta(cash: 0, currency: 'USD');
     final quotes = ref.watch(latestBriefProvider).value?.quotes ?? const {};
     final summary = summarize(positions, meta, quotes);
+    final trades = ref.watch(tradesProvider).value ?? const <Trade>[];
+    final realized = realizedPnlEur(trades, quotes);
+    final conc = concentration(positions, meta, quotes);
+    final weights = {for (final s in conc?.stats ?? const []) s.ticker: s.weightPct};
 
     return Scaffold(
       body: ListView(
@@ -66,6 +71,14 @@ class PortfolioTab extends ConsumerWidget {
                                         fontWeight: FontWeight.w700),
                                   )),
                         const SizedBox(width: 28),
+                        const SizedBox(width: 24),
+                        _OverviewColumn(
+                            label: t.realizedPnl,
+                            value: realized == null
+                                ? const Text('—')
+                                : MoneyText(realized, size: 15, prefix: '€',
+                                    color: realized == 0 ? null : pnlColor(realized))),
+                        const SizedBox(width: 24),
                         _OverviewColumn(
                             label: t.cashTapHint,
                             value: summary.cashEur == null
@@ -78,6 +91,7 @@ class PortfolioTab extends ConsumerWidget {
               ),
             ),
           ),
+          if (conc != null) _ConcentrationCard(conc: conc),
           if (positions.isEmpty)
             Padding(
               padding: const EdgeInsets.all(32),
@@ -105,8 +119,12 @@ class PortfolioTab extends ConsumerWidget {
                 title: Text(p.ticker,
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 subtitle: Text(
-                  t.positionSubtitle(
-                      p.shares.toStringAsFixed(0), p.avgCost.toStringAsFixed(2)),
+                  [
+                    t.positionSubtitle(
+                        p.shares.toStringAsFixed(0), p.avgCost.toStringAsFixed(2)),
+                    if (weights[p.ticker] case final w?)
+                      '${w.toStringAsFixed(1)}%',
+                  ].join(' · '),
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 trailing: _positionTrailing(t, p, quotes[p.ticker]),
@@ -114,6 +132,15 @@ class PortfolioTab extends ConsumerWidget {
                     context: context,
                     builder: (_) => _PositionDialog(existing: p)),
               ),
+          ListTile(
+            key: const Key('tradeHistoryEntry'),
+            leading: const Icon(Icons.receipt_long_outlined),
+            title: Text(t.tradeHistory),
+            subtitle: trades.isEmpty ? null : Text('${trades.length}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const TradesPage())),
+          ),
           const SizedBox(height: 80),
         ],
       ),
@@ -133,6 +160,75 @@ class PortfolioTab extends ConsumerWidget {
     final pnl = (q.close - p.avgCost) / p.avgCost * 100;
     return PriceWithPill(
         price: q.close, pct: pnl, prefix: currencyPrefix(p.ticker));
+  }
+}
+
+/// 集中度卡：一条按权重降序的堆叠色带（末段灰色为现金）+ 一行关键比例。
+/// 用来一眼看出「有没有押太重在某一只上」，对接仓位管理方案的单票/分层上限。
+class _ConcentrationCard extends ConsumerWidget {
+  const _ConcentrationCard({required this.conc});
+  final Concentration conc;
+
+  static const _palette = [
+    Color(0xFF34C759), Color(0xFF0A84FF), Color(0xFFFF9F0A),
+    Color(0xFFBF5AF2), Color(0xFF5AC8FA), Color(0xFFFF375F),
+    Color(0xFFFFD60A), Color(0xFF64D2FF),
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(l10nProvider);
+    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t.concentration, style: TextStyle(fontSize: 12, color: grey)),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: SizedBox(
+                height: 8,
+                child: Row(
+                  // 无子节点的 ColoredBox 按最小约束取尺寸，Row 默认给的高度
+                  // 约束是松的（0~8）→ 会得到 0 高、整条色带不可见。stretch
+                  // 把高度约束改成紧的，色带才画得出来。
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (i, s) in conc.stats.indexed)
+                      Expanded(
+                        flex: (s.weightPct * 100).round().clamp(1, 1 << 30),
+                        child: ColoredBox(color: _palette[i % _palette.length]),
+                      ),
+                    if (conc.cashPct > 0)
+                      Expanded(
+                        flex: (conc.cashPct * 100).round().clamp(1, 1 << 30),
+                        child: ColoredBox(color: grey.withValues(alpha: 0.35)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                t.concentrationDetail(
+                    conc.topPct.toStringAsFixed(1),
+                    conc.top3Pct.toStringAsFixed(1),
+                    conc.cashPct.toStringAsFixed(1)),
+                maxLines: 1,
+                style: TextStyle(fontSize: 12, color: grey),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -316,9 +412,119 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
         if (!isNew)
           TextButton(
               key: const Key('posDelete'), onPressed: _delete, child: Text(t.delete)),
+        if (!isNew)
+          FilledButton.tonal(
+            key: const Key('posSell'),
+            onPressed: () {
+              final p = widget.existing!;
+              Navigator.of(context).pop();          // 关掉编辑框再开卖出框
+              showDialog<void>(
+                  context: context, builder: (_) => _SellDialog(position: p));
+            },
+            child: Text(t.sell),
+          ),
         TextButton(
             onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
         FilledButton(key: const Key('posSave'), onPressed: _save, child: Text(t.save)),
+      ],
+    );
+  }
+}
+
+/// 卖出对话框：股数缺省全部、价格缺省当前行情、日期缺省今天。
+/// 提交走 `repo.applyTrade`——记流水 + 改持仓 + 加回现金，一次原子写。
+class _SellDialog extends ConsumerStatefulWidget {
+  const _SellDialog({required this.position});
+  final Position position;
+
+  @override
+  ConsumerState<_SellDialog> createState() => _SellDialogState();
+}
+
+class _SellDialogState extends ConsumerState<_SellDialog> {
+  late final _shares = TextEditingController(text: _fmtPrefill(widget.position.shares));
+  late final TextEditingController _price = TextEditingController();
+  late final _date = TextEditingController(
+      text: DateTime.now().toIso8601String().substring(0, 10));
+  var _prefilledPrice = false;
+
+  @override
+  void dispose() {
+    _shares.dispose();
+    _price.dispose();
+    _date.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final shares = double.tryParse(_shares.text);
+    final price = double.tryParse(_price.text);
+    final date = _date.text.trim();
+    if (shares == null || shares <= 0 || price == null || price <= 0 || date.isEmpty) {
+      return;
+    }
+    final t = ref.read(l10nProvider);
+    await ref.read(repoProvider).applyTrade(
+        ticker: widget.position.ticker, side: 'sell', shares: shares,
+        price: price, date: date);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text(t.tradeRecorded)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ref.watch(l10nProvider);
+    final quotes = ref.watch(latestBriefProvider).value?.quotes ?? const {};
+    final quote = quotes[widget.position.ticker];
+    if (!_prefilledPrice && quote != null) {
+      _price.text = quote.close.toStringAsFixed(2);
+      _prefilledPrice = true;
+    }
+    final prefix = currencyPrefix(widget.position.ticker);
+    return AlertDialog(
+      title: Text(t.sellTitle(widget.position.ticker)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(t.heldShares(_fmtPrefill(widget.position.shares)),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          TextField(
+            key: const Key('sellShares'),
+            controller: _shares,
+            decoration: InputDecoration(
+              labelText: t.shares,
+              suffixIcon: TextButton(
+                key: const Key('sellAll'),
+                onPressed: () =>
+                    _shares.text = _fmtPrefill(widget.position.shares),
+                child: Text(t.sellAll),
+              ),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('sellPrice'),
+            controller: _price,
+            decoration: InputDecoration(labelText: '${t.priceLabel} ($prefix)'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          TextField(
+            key: const Key('sellDate'),
+            controller: _date,
+            decoration: InputDecoration(labelText: t.tradeDate),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
+        FilledButton(
+            key: const Key('sellConfirm'), onPressed: _submit, child: Text(t.sell)),
       ],
     );
   }

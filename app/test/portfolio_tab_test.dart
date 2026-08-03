@@ -150,4 +150,108 @@ void main() {
     expect(doc['shares'], 10.5);
     expect(doc['avgCost'], 150.25);
   });
+
+  group('卖出与统计', () {
+    // NVDA 10 股 @成本 150，现价 200.75；现金 5000 USD（_seed 无汇率 → EUR 聚合为 null）
+    Future<void> seedEur(FakeFirebaseFirestore db) async {
+      await db.collection('positions').doc('ENEL.MI').set({
+        'ticker': 'ENEL.MI', 'shares': 100, 'avgCost': 8.0,
+        'updatedAt': '2026-08-01T00:00:00+00:00',
+      });
+      await db.collection('meta').doc('portfolio').set({'cash': 1000.0, 'currency': 'EUR'});
+      await db.collection('briefs').doc('2026-08-01').set({
+        'date': '2026-08-01', 'markdownZh': 'x', 'tickers': ['ENEL.MI'],
+        'createdAt': '2026-08-01T00:00:00+00:00',
+        'quotes': {
+          'ENEL.MI': {'close': 10.0, 'pctChange': 1.0},
+          'EURUSD=X': {'close': 1.1, 'pctChange': 0.0},
+        },
+      });
+    }
+
+    testWidgets('concentration card shows weights and the position row shows its %',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedEur(db);   // 持仓 €1000 / 现金 €1000 → 各 50%
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      expect(find.text('集中度'), findsOneWidget);
+      expect(find.textContaining('最大 50.0%'), findsOneWidget);
+      expect(find.textContaining('现金 50.0%'), findsOneWidget);
+      expect(find.textContaining('50.0%'), findsWidgets);   // 持仓行的权重
+    });
+
+    testWidgets('concentration bar segments have real height (not collapsed)',
+        (tester) async {
+      // 回归：无子节点的 ColoredBox 在松高度约束下会算出 0 高，整条色带消失。
+      final db = FakeFirebaseFirestore();
+      await seedEur(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      final segs = find.descendant(
+          of: find.byType(ClipRRect), matching: find.byType(ColoredBox));
+      expect(segs, findsNWidgets(2));   // 一段持仓 + 一段现金
+      for (final e in segs.evaluate()) {
+        final size = (e.renderObject as RenderBox).size;
+        expect(size.height, 8);
+        expect(size.width, greaterThan(0));
+      }
+    });
+
+    testWidgets('selling from the position dialog updates position, cash and trades',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedEur(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('ENEL.MI'));                 // 打开编辑框
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('posSell')));     // 转到卖出框
+      await tester.pumpAndSettle();
+
+      // 股数缺省全部持仓、价格缺省当前行情
+      expect(find.text('100'), findsWidgets);
+      expect(find.text('10.00'), findsWidgets);
+
+      await tester.enterText(find.byKey(const Key('sellShares')), '40');
+      await tester.tap(find.byKey(const Key('sellConfirm')));
+      await tester.pumpAndSettle();
+
+      final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
+      expect(pos['shares'], 60);
+      expect(pos['avgCost'], 8.0);
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+          1000 + 400);
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['side'], 'sell');
+      expect(tr['realizedPnl'], 80.0);        // (10 - 8) * 40
+    });
+
+    testWidgets('realized pnl from past sells shows in the overview', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedEur(db);
+      await db.collection('trades').add({
+        'ticker': 'ENEL.MI', 'side': 'sell', 'shares': 10.0, 'price': 12.0,
+        'date': '2026-07-20', 'realizedPnl': 40.0, 'avgCostAtTrade': 8.0,
+      });
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      expect(find.text('已实现盈亏'), findsOneWidget);
+      expect(find.text('€40.00'), findsOneWidget);
+    });
+
+    testWidgets('trade history entry is present and counts trades', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedEur(db);
+      await db.collection('trades').add({
+        'ticker': 'ENEL.MI', 'side': 'buy', 'shares': 10.0, 'price': 8.0,
+        'date': '2026-07-01',
+      });
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('tradeHistoryEntry')), findsOneWidget);
+      expect(find.text('交易记录'), findsOneWidget);
+    });
+  });
 }

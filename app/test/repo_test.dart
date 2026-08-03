@@ -185,4 +185,103 @@ void main() {
     final all = await repo.allSuggestions().first;
     expect(all.map((s) => s.ticker), ['C', 'B', 'A']);
   });
+
+  group('applyTrade', () {
+    Future<void> seed({double shares = 100, double avgCost = 10, double cash = 5000}) async {
+      await db.collection('positions').doc('ENEL.MI').set({
+        'ticker': 'ENEL.MI', 'shares': shares, 'avgCost': avgCost,
+        'updatedAt': '2026-08-01T00:00:00+00:00',
+      });
+      await db.collection('meta').doc('portfolio').set({'cash': cash, 'currency': 'EUR'});
+    }
+
+    test('buy adds shares, re-weights cost and debits cash', () async {
+      await seed();  // 100 股 @ €10
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'buy', shares: 100,
+          price: 12, date: '2026-08-03');
+      final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
+      expect(pos['shares'], 200);
+      expect(pos['avgCost'], 11);            // (100*10 + 100*12) / 200
+      final cash = (await db.collection('meta').doc('portfolio').get()).data()!['cash'];
+      expect(cash, 5000 - 1200);
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['side'], 'buy');
+      expect(tr['realizedPnl'], isNull);     // 买入不产生已实现盈亏
+    });
+
+    test('buy of a new ticker also joins the watchlist', () async {
+      await db.collection('meta').doc('portfolio').set({'cash': 5000, 'currency': 'EUR'});
+      await repo.applyTrade(ticker: 'KO', side: 'buy', shares: 10,
+          price: 80, date: '2026-08-03');
+      expect((await db.collection('watchlist').doc('KO').get()).exists, isTrue);
+      expect((await db.collection('positions').doc('KO').get()).data()!['avgCost'], 80);
+    });
+
+    test('partial sell keeps cost, credits cash and records realized pnl', () async {
+      await seed();  // 100 股 @ €10
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 40,
+          price: 15, date: '2026-08-03');
+      final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
+      expect(pos['shares'], 60);
+      expect(pos['avgCost'], 10);            // 成本价不因卖出改变
+      final cash = (await db.collection('meta').doc('portfolio').get()).data()!['cash'];
+      expect(cash, 5000 + 600);
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['realizedPnl'], 200);        // (15-10) * 40
+      expect(tr['avgCostAtTrade'], 10);
+    });
+
+    test('selling everything deletes the position', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 100,
+          price: 15, date: '2026-08-03');
+      expect((await db.collection('positions').doc('ENEL.MI').get()).exists, isFalse);
+      final cash = (await db.collection('meta').doc('portfolio').get()).data()!['cash'];
+      expect(cash, 5000 + 1500);
+    });
+
+    test('selling more than held is clamped to the held quantity', () async {
+      await seed(shares: 30);
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 999,
+          price: 15, date: '2026-08-03');
+      final tr = (await db.collection('trades').get()).docs.single.data();
+      expect(tr['shares'], 30);              // 不会写出负股数
+      expect(tr['realizedPnl'], 150);        // (15-10) * 30
+      expect((await db.collection('positions').doc('ENEL.MI').get()).exists, isFalse);
+    });
+
+    test('a sell with no position is a no-op', () async {
+      await db.collection('meta').doc('portfolio').set({'cash': 5000, 'currency': 'EUR'});
+      await repo.applyTrade(ticker: 'NOPE', side: 'sell', shares: 10,
+          price: 15, date: '2026-08-03');
+      expect((await db.collection('trades').get()).docs, isEmpty);
+      expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'], 5000);
+    });
+
+    test('suggestionId flips the suggestion to accepted', () async {
+      await seed();
+      final sug = await db.collection('suggestions').add({
+        'ticker': 'ENEL.MI', 'action': 'trim', 'rationale': 'r', 'analysisId': 'a',
+        'status': 'pending', 'createdAt': '2026-08-01T00:00:00+00:00',
+      });
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 10,
+          price: 15, date: '2026-08-03', suggestionId: sug.id);
+      expect((await db.collection('suggestions').doc(sug.id).get()).data()!['status'],
+          'accepted');
+      expect((await db.collection('trades').get()).docs.single.data()['suggestionId'],
+          sug.id);
+    });
+
+    test('trades stream returns newest first', () async {
+      await seed();
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 1,
+          price: 11, date: '2026-08-01');
+      await repo.applyTrade(ticker: 'ENEL.MI', side: 'sell', shares: 1,
+          price: 12, date: '2026-08-03');
+      final list = await repo.trades().first;
+      expect(list.map((t) => t.date), ['2026-08-03', '2026-08-01']);
+      expect(list.first.isSell, isTrue);
+      expect(list.first.amount, 12);
+    });
+  });
 }
