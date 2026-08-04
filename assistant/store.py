@@ -47,6 +47,7 @@ class Store(Protocol):
     def pending_suggestions(self) -> list[dict]: ...
     def suggestions_for_ticker(self, ticker: str) -> list[dict]: ...
     def get_strategy_config(self) -> dict: ...
+    def get_policy_config(self) -> dict: ...
     def has_job_today(self, jtype: str, date_str: str, strategy: str | None = None) -> bool: ...
     def add_job(self, data: dict) -> str: ...
     def claim_queued_jobs(self) -> list[dict]: ...
@@ -236,6 +237,13 @@ class MemoryStore:
 
     def get_strategy_config(self) -> dict:
         return dict(getattr(self, "_strategy_cfg", {}) or {})
+
+    def get_policy_config(self) -> dict:
+        return dict(getattr(self, "_policy_cfg", {}) or {})
+
+    def seed_policy_config(self, cfg: dict) -> None:
+        """tests only"""
+        self._policy_cfg = dict(cfg)
 
     def has_job_today(self, jtype: str, date_str: str, strategy: str | None = None) -> bool:
         return any(
@@ -452,6 +460,10 @@ class FirestoreStore:
     # --- strategies ---
     def get_strategy_config(self) -> dict:
         snap = self._db.collection("meta").document("strategies").get()
+        return snap.to_dict() if snap.exists else {}
+
+    def get_policy_config(self) -> dict:
+        snap = self._db.collection("meta").document("policy").get()
         return snap.to_dict() if snap.exists else {}
 
     def has_job_today(self, jtype: str, date_str: str, strategy: str | None = None) -> bool:

@@ -189,3 +189,133 @@ def test_run_scan_cooldown_only_blocks_same_action():
              if s.get("action") == "sell" and s.get("status") == "pending"]
     assert len(sells) == 1
 
+
+# --- Policy 闸接线 -------------------------------------------------------------
+# 汇率固定 1.25，其余标的报价按需给，方便算出确定的 EUR 口径数字。
+def quotes_factory(prices):
+    def fetch(ticker, **kw):
+        if ticker == "EURUSD=X":
+            return {"ticker": ticker, "close": 1.25, "prevClose": 1.25, "pctChange": 0.0}
+        if ticker not in prices:
+            raise KeyError(ticker)
+        return {"ticker": ticker, "close": prices[ticker], "prevClose": prices[ticker],
+                "pctChange": 0.0}
+    return fetch
+
+
+LOOSE_POLICY = {"cashFloorPct": 0, "maxSingleStockPct": 100, "maxSingleFundPct": 100,
+                "maxSatellitePct": 100, "maxUsdExposurePct": 100,
+                "maxTotalRiskPct": 100, "maxSingleIssuerPct": 100}
+
+
+def test_buy_signal_is_clamped_by_the_policy_gate():
+    store = make_store(watch=("BRK.MI",), cash=10_000.0)
+    store.seed_meta({"cash": 10_000.0, "currency": "EUR"})
+    store.seed_policy_config({**LOOSE_POLICY, "maxSingleStockPct": 8})
+    run_scan(store, {"strategy": "turtle"}, "2026-08-01",
+             fetch_bars=fake_bars_factory({"BRK.MI": BREAKOUT_CLOSES}),
+             fetch_quote=quotes_factory({"BRK.MI": 102.6}))
+    (doc,) = store._suggestions.values()
+    assert doc["action"] == "buy"
+    meta = doc["meta"]
+    # 单票上限 8% × €10000 = €800，价 €102.6 → 7 股
+    assert meta["shares"] == 7
+    assert meta["clampedFrom"] > 7 and meta["clampedBy"] == "single"
+    assert "单票上限" in doc["rationale"] and "per-name cap" in doc["rationaleEn"]
+
+
+def test_buy_signal_blocked_when_no_headroom():
+    # 有持仓（组合值撑得起单元计算）但现金为 0 —— 正是现实处境：钱全在仓里
+    store = make_store(watch=("BRK.MI",),
+                       positions=[{"ticker": "HELD.MI", "shares": 100, "avgCost": 100.0}],
+                       cash=0.0)
+    store.seed_meta({"cash": 0.0, "currency": "EUR"})
+    store.seed_policy_config({**LOOSE_POLICY, "cashFloorPct": 5})
+    run_scan(store, {"strategy": "turtle"}, "2026-08-01",
+             fetch_bars=fake_bars_factory({"BRK.MI": BREAKOUT_CLOSES,
+                                           "HELD.MI": QUIET_CLOSES}),
+             fetch_quote=quotes_factory({"BRK.MI": 102.6, "HELD.MI": 100.0}))
+    (doc,) = [d for d in store._suggestions.values() if d["ticker"] == "BRK.MI"]
+    assert doc["meta"]["blocked"] is True
+    assert doc["meta"]["blockedBy"] == "cash"
+    assert "⚠️" in doc["rationale"]
+
+
+def test_sell_signals_are_never_gated():
+    """减风险的动作不设闸——现金为 0 也照常发止损。"""
+    store = make_store(watch=(), positions=[{"ticker": "HELD.MI", "shares": 10,
+                                             "avgCost": 105.0}], cash=0.0)
+    store.seed_meta({"cash": 0.0, "currency": "EUR"})
+    store.seed_policy_config({"cashFloorPct": 50})
+    closes = [110.0] * 70 + [102.0]      # 触发种子单元止损
+    run_scan(store, {"strategy": "turtle", "scope": "positions"}, "2026-08-01",
+             fetch_bars=fake_bars_factory({"HELD.MI": closes}),
+             fetch_quote=quotes_factory({"HELD.MI": 102.0}))
+    (doc,) = store._suggestions.values()
+    assert doc["action"] == "sell"
+    assert "blocked" not in doc["meta"]
+
+
+def test_blocked_card_does_not_dedup_away_a_later_signal():
+    """blocked 卡不参与去重：额度腾出后新信号照样能落库。"""
+    store = make_store(watch=("BRK.MI",),
+                       positions=[{"ticker": "HELD.MI", "shares": 100, "avgCost": 100.0}],
+                       cash=0.0)
+    store.seed_meta({"cash": 0.0, "currency": "EUR"})
+    store.seed_policy_config({**LOOSE_POLICY, "cashFloorPct": 5})
+    bars = fake_bars_factory({"BRK.MI": BREAKOUT_CLOSES, "HELD.MI": QUIET_CLOSES})
+    quote = quotes_factory({"BRK.MI": 102.6, "HELD.MI": 100.0})
+    run_scan(store, {"strategy": "turtle"}, "2026-08-01", fetch_bars=bars, fetch_quote=quote)
+    blocked = [d for d in store._suggestions.values()
+               if (d["meta"] or {}).get("blocked")]
+    assert len(blocked) == 1
+    # 现金到位后再扫：旧的 blocked 卡不该挡住新信号
+    store.seed_meta({"cash": 50_000.0, "currency": "EUR"})
+    store.seed_policy_config(LOOSE_POLICY)
+    run_scan(store, {"strategy": "turtle"}, "2026-08-02", fetch_bars=bars, fetch_quote=quote)
+    fresh = [d for d in store._suggestions.values()
+             if d["ticker"] == "BRK.MI" and not (d["meta"] or {}).get("blocked")]
+    assert len(fresh) == 1 and fresh[0]["meta"]["shares"] >= 1
+
+
+def test_portfolio_value_is_passed_in_the_tickers_own_currency():
+    """单元公式是 组合值 ÷ 2N，N 是原币 → 组合值必须折成原币，否则差一个汇率。"""
+    seen = {}
+
+    from assistant.strategies import REGISTRY, Strategy, register
+
+    def spy_scan(ctx):
+        seen[ctx.ticker] = ctx.portfolio_value
+        return []
+
+    register(Strategy(name="spy", label="spy", defaults={}, scan=spy_scan))
+    try:
+        store = make_store(watch=("USD.X", "EUR.MI"), cash=10_000.0)
+        store.seed_meta({"cash": 10_000.0, "currency": "EUR"})
+        run_scan(store, {"strategy": "spy"}, "2026-08-01",
+                 fetch_bars=fake_bars_factory({"USD.X": QUIET_CLOSES,
+                                               "EUR.MI": QUIET_CLOSES}),
+                 fetch_quote=quotes_factory({"USD.X": 100.0, "EUR.MI": 100.0}))
+        # 组合是纯现金 €10000：欧元标的看到 €10000，美元标的看到 $12500
+        assert seen["EUR.MI"] == pytest.approx(10_000)
+        assert seen["USD.X"] == pytest.approx(12_500)
+    finally:
+        REGISTRY.pop("spy", None)
+
+
+def test_gates_skipped_without_fx_but_signals_still_fire():
+    """缺汇率时不给错数：跳过闸门，信号照发（退回币种直加估值）。"""
+    store = make_store(watch=("BRK",), cash=100_000.0)
+    store.seed_policy_config({"cashFloorPct": 5})
+
+    def no_fx(ticker, **kw):
+        if ticker == "EURUSD=X":
+            raise RuntimeError("rate unavailable")
+        return {"ticker": ticker, "close": 102.6, "prevClose": 102.6, "pctChange": 0.0}
+
+    run_scan(store, {"strategy": "turtle"}, "2026-08-01",
+             fetch_bars=fake_bars_factory({"BRK": BREAKOUT_CLOSES}), fetch_quote=no_fx)
+    (doc,) = store._suggestions.values()
+    assert doc["action"] == "buy"
+    assert "blocked" not in doc["meta"] and "clampedBy" not in doc["meta"]
+

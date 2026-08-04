@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from assistant import policy
 from assistant.quotes import get_ohlc_history, get_quote, is_isin
 from assistant.store import utc_now_iso
 from assistant.strategies import REGISTRY, ScanContext
@@ -39,14 +40,26 @@ def _tickers_for(scope: str, positions: dict[str, dict], watch: list[str]) -> li
     return [t for t in tickers if not is_isin(t)]  # 债券无 OHLC 语义，跳过
 
 
-def _portfolio_value(positions: dict[str, dict], cash: float, fetch_quote) -> float:
-    """advisor 同款简化：各币种直加，行情失败退回成本价。"""
-    total = cash
-    for p in positions.values():
+def _quotes_map(positions: dict[str, dict], fetch_quote) -> dict:
+    """取一遍行情（含 EURUSD=X），失败的标的退回成本价。Policy 快照要用。"""
+    quotes: dict[str, dict] = {}
+    for ticker, pos in positions.items():
         try:
-            price = fetch_quote(p["ticker"])["close"]
+            quotes[ticker] = {"close": fetch_quote(ticker)["close"]}
         except Exception:
-            price = p.get("avgCost", 0.0)
+            quotes[ticker] = {"close": pos.get("avgCost", 0.0)}
+    try:
+        quotes["EURUSD=X"] = {"close": fetch_quote("EURUSD=X")["close"]}
+    except Exception:
+        logger.warning("EURUSD rate unavailable; policy gates will be skipped")
+    return quotes
+
+
+def _fallback_value(positions: dict[str, dict], cash: float, quotes: dict) -> float:
+    """缺汇率时的退路：各币种直加（不准，但比不出信号好）。"""
+    total = cash
+    for ticker, p in positions.items():
+        price = (quotes.get(ticker) or {}).get("close") or p.get("avgCost", 0.0)
         total += p.get("shares", 0.0) * price
     return total
 
@@ -92,8 +105,15 @@ def run_scan(store, job: dict, today: str, *,
 
     positions = {p["ticker"]: p for p in store.get_positions()}
     watch = [w["ticker"] for w in store.get_watchlist()]
-    cash = store.get_portfolio_meta().get("cash", 0.0)
-    portfolio_value = _portfolio_value(positions, cash, fetch_quote)
+    meta = store.get_portfolio_meta()
+    cash = meta.get("cash", 0.0)
+    quotes = _quotes_map(positions, fetch_quote)
+    # Policy 快照统一 EUR 口径；缺汇率（含美元标的）时为 None → 跳过闸门但照常出信号
+    snap = policy.snapshot(list(positions.values()), cash,
+                           meta.get("currency", "EUR"), quotes,
+                           store.get_policy_config())
+    if snap is None:
+        logger.warning("policy snapshot unavailable (missing FX?); gates skipped")
     pending = store.pending_suggestions()
     # 忽略冷却：同 ticker+策略+动作在 N 天内被 dismissed 过就不再生成，
     # 否则条件仍成立时每次扫描都会把用户刚忽略的建议原样端回来。
@@ -122,8 +142,12 @@ def run_scan(store, job: dict, today: str, *,
             position = positions.get(ticker)
             history = store.suggestions_for_ticker(ticker)
             units = rebuild_units(history, name, position)
+            # 单元公式是 组合值 ÷ 2N，而 N 永远是标的原币 → 组合值也要折成原币，
+            # 否则 EUR 总值除以 USD 的 N 会差一个汇率（约 8~15%）。
+            pv = (snap.to_native(ticker, snap.total_eur) if snap
+                  else _fallback_value(positions, cash, quotes))
             ctx = ScanContext(ticker=ticker, bars=bars, position=position,
-                              units=units, portfolio_value=portfolio_value,
+                              units=units, portfolio_value=pv,
                               cash=cash, params=params)
             try:
                 signals = strat.scan(ctx)
@@ -132,7 +156,9 @@ def run_scan(store, job: dict, today: str, *,
                 continue
             for sig in signals:
                 if any(p.get("ticker") == ticker and p.get("source") == name
-                       and p.get("action") == sig.action for p in pending):
+                       and p.get("action") == sig.action
+                       and not (p.get("meta") or {}).get("blocked")
+                       for p in pending):
                     logger.info("dedup: pending %s/%s for %s exists",
                                 name, sig.action, ticker)
                     continue
@@ -149,10 +175,31 @@ def run_scan(store, job: dict, today: str, *,
                     meta["shares"] = sig.shares
                 if sig.stop is not None:
                     meta["stop"] = round(sig.stop, 4)
+                rationale, rationale_en = sig.reason, sig.reason_en
+
+                # 买入类过组合级闸：钳股数或整条降级为 blocked（卖出类不设闸——
+                # 减风险的动作永远允许）
+                if snap is not None and sig.action in ("buy", "add"):
+                    verdict = policy.check_buy(
+                        snap, ticker, sig.shares or 0, sig.price, stop_native=sig.stop)
+                    if verdict.blocked:
+                        meta["blocked"] = True
+                        meta["blockedBy"] = verdict.binding
+                        if verdict.funding_candidates:
+                            meta["fundingCandidates"] = verdict.funding_candidates
+                        rationale = f"{sig.reason}\n\n⚠️ {verdict.reason}"
+                        rationale_en = f"{sig.reason_en}\n\n⚠️ {verdict.reason_en}"
+                    elif verdict.clamped:
+                        meta["shares"] = verdict.allowed_shares
+                        meta["clampedFrom"] = verdict.requested_shares
+                        meta["clampedBy"] = verdict.binding
+                        rationale = f"{sig.reason}\n\n⚠️ {verdict.reason}"
+                        rationale_en = f"{sig.reason_en}\n\n⚠️ {verdict.reason_en}"
+
                 doc = {
                     "ticker": ticker, "action": sig.action,
-                    "targetWeightPct": None, "rationale": sig.reason,
-                    "rationaleEn": sig.reason_en,
+                    "targetWeightPct": None, "rationale": rationale,
+                    "rationaleEn": rationale_en,
                     "analysisId": "", "source": name, "meta": meta,
                     "status": "pending", "createdAt": utc_now_iso(),
                 }

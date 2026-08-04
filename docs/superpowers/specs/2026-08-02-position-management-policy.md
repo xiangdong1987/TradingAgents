@@ -1,6 +1,10 @@
 # 仓位管理方案（Position Management Policy）
 
-日期：2026-08-02　状态：提案（已经两轮对抗审查修订，待用户确认后分期落地）
+日期：2026-08-02　状态：**P1 已落地（2026-08-04）**；P2/P3 待做
+
+> P1 实现：`assistant/policy.py`（纯函数，六道买入闸 + EUR 快照 + 钳制/定股数）、
+> `meta/policy` 配置、策略引擎与 advisor 双路接闸、组合估值改 EUR 统一并修正
+> 「EUR 总值 ÷ 原币 N」的量纲错。测试见 tests/test_assistant_policy.py 等。
 
 > 免责声明：本方案是规则框架与工程设计，参数缺省值取自业界常见实践，仅供研究参考，
 > 不构成投资建议；所有参数由用户自定，交易由用户自行决策。
@@ -162,7 +166,7 @@ maxSingleIssuerPct，不允许一次性滚回同一只新券恢复 60%+ 集中�
 
 ## 7. 落地路径
 
-- **P1 后端 Policy 层**（先见效）：`assistant/policy.py`（纯函数 + `meta/policy`
+- ~~**P1 后端 Policy 层**~~ ✅ 已完成（2026-08-04）：`assistant/policy.py`（纯函数 + `meta/policy`
   配置，store 照抄 get_strategy_config 模式加 get_policy）；advisor 钳制 + 现金检查 +
   落库补 meta（shares/stop）+ 需要 N 时经 get_ohlc_history 取数；strategies engine
   组合级闸 + 按标的币种口径传组合值；组合估值 EUR 统一；`setPosition` 改 merge 写；
