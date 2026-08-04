@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/repo.dart';
 import 'l10n.dart';
+import 'logic/policy.dart';
 import 'models/models.dart';
 
 final firebaseAuthProvider = Provider<FirebaseAuth>((ref) => FirebaseAuth.instance);
@@ -27,6 +28,11 @@ final chatsProvider =
     StreamProvider<List<ChatMessage>>((ref) => ref.watch(repoProvider).chats());
 final runnerStatusProvider =
     StreamProvider<RunnerStatus>((ref) => ref.watch(repoProvider).runnerStatus());
+
+final policyProvider = Provider<PolicyConfig>((ref) => PolicyConfig.fromMap(
+    ref.watch(policyRawProvider).value));
+final policyRawProvider = StreamProvider<Map<String, dynamic>>(
+    (ref) => ref.watch(repoProvider).policyConfig());
 
 final settingsProvider =
     StreamProvider<Map<String, dynamic>>((ref) => ref.watch(repoProvider).settings());

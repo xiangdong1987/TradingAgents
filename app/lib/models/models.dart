@@ -41,13 +41,17 @@ class WatchItem {
 
 class Position {
   const Position({required this.ticker, required this.shares, required this.avgCost,
-      required this.updatedAt, this.openedAt});
+      required this.updatedAt, this.openedAt, this.layer, this.holdToMaturity});
   final String ticker;
   final double shares;
   final double avgCost;
   final DateTime updatedAt;
   /// 建仓日（YYYY-MM-DD，可选）。分红只从这天起算——runner 用它当下限。
   final String? openedAt;
+  /// 仓位分层（defensive|core|satellite）。为空时由 PolicyConfig 推断。
+  final String? layer;
+  /// 持有到期（BTP 之类）。影响 riskBase=liquid 的分母。
+  final bool? holdToMaturity;
 
   factory Position.fromDoc(String id, Map<String, dynamic> d) => Position(
         ticker: _s(d['ticker'], id),
@@ -55,6 +59,8 @@ class Position {
         avgCost: _d(d['avgCost']),
         updatedAt: _t(d['updatedAt']),
         openedAt: d['openedAt'] as String?,
+        layer: d['layer'] as String?,
+        holdToMaturity: d['holdToMaturity'] as bool?,
       );
 }
 
@@ -234,7 +240,8 @@ class Suggestion {
       required this.targetWeightPct, required this.rationale, this.rationaleEn = '',
       required this.analysisId,
       required this.status, required this.createdAt, required this.outcomePct,
-      required this.resolvedAt, required this.reviewedAt, this.source = ''});
+      required this.resolvedAt, required this.reviewedAt, this.source = '',
+      this.meta = const {}});
   final String id;
   final String ticker;
   final String action; // buy|add|trim|sell|hold
@@ -248,6 +255,19 @@ class Suggestion {
   final DateTime? resolvedAt;
   final DateTime? reviewedAt;
   final String source; // '' = 深度分析引擎；策略名（如 turtle）= 规则策略产出
+  /// 执行细节与 Policy 判定：shares/stop/entry/n/trigger/system、
+  /// blocked+blockedBy+fundingCandidates、clampedFrom+clampedBy、targetClampedFrom。
+  final Map<String, dynamic> meta;
+
+  double? get shares => _dOrNull(meta['shares']);
+  double? get stop => _dOrNull(meta['stop']);
+  bool get isBlocked => meta['blocked'] == true;
+  String? get blockedBy => meta['blockedBy'] as String?;
+  double? get clampedFrom => _dOrNull(meta['clampedFrom']);
+  String? get clampedBy => meta['clampedBy'] as String?;
+  List<String> get fundingCandidates => [
+        for (final c in (meta['fundingCandidates'] as List? ?? const [])) '$c',
+      ];
 
   bool get isPending => status == 'pending';
 
@@ -276,6 +296,7 @@ class Suggestion {
         resolvedAt: _tOrNull(d['resolvedAt']),
         reviewedAt: _tOrNull(d['reviewedAt']),
         source: _s(d['source']),
+        meta: Map<String, dynamic>.from((d['meta'] as Map?) ?? const {}),
       );
 }
 

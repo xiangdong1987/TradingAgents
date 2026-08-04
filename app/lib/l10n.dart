@@ -104,6 +104,33 @@ class L10n {
   String get acceptOnly => isZh ? '仅标记采纳' : 'Accept only';
   String get acceptWithTrade => isZh ? '记录成交并采纳' : 'Record trade & accept';
   String get turtleSource => isZh ? '🐢 海龟' : '🐢 Turtle';
+  String suggestShares(String shares) => isZh ? '建议 $shares 股' : '$shares shares';
+  String stopAt(String price) => isZh ? '止损 $price' : 'stop $price';
+  String get blockedBadge => isZh ? '受仓位纪律拦住' : 'Blocked by policy';
+  String get clampedBadge => isZh ? '已按上限钳制' : 'Clamped to cap';
+  String fundingHint(String candidates) =>
+      isZh ? '腾挪候选：$candidates' : 'Funding candidates: $candidates';
+  String get acceptAnyway => isZh ? '仍然采纳' : 'Accept anyway';
+  String get nothingToSell =>
+      isZh ? '没有可卖的持仓，这笔没有记录' : 'No position to sell — nothing recorded';
+
+  // ---- 仓位分层 ----
+  String get layers => isZh ? '仓位分层' : 'Allocation';
+  String get layerDefensiveLabel => isZh ? '防守' : 'Defensive';
+  String get layerCoreLabel => isZh ? '核心' : 'Core';
+  String get layerSatelliteLabel => isZh ? '卫星' : 'Satellite';
+  String layerName(String layer) => switch (layer) {
+        'defensive' => layerDefensiveLabel,
+        'core' => layerCoreLabel,
+        _ => layerSatelliteLabel,
+      };
+  String bandLabel(String lo, String hi) => isZh ? '目标 $lo–$hi%' : 'target $lo–$hi%';
+  String get overCapTag => isZh ? '超上限' : 'over cap';
+  String get underFloorTag => isZh ? '低于下限' : 'below floor';
+  String get usdExposure => isZh ? '美元敞口' : 'USD exposure';
+  String capLabel(String pct) => isZh ? '上限 $pct%' : 'cap $pct%';
+  String get holdToMaturity => isZh ? '持有到期' : 'Hold to maturity';
+  String get layerField => isZh ? '分层' : 'Layer';
 
   // ---- 自选 tab ----
   String get watchEmpty =>

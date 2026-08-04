@@ -10,6 +10,17 @@ Widget _wrap(FakeFirebaseFirestore db) => ProviderScope(
       child: const MaterialApp(home: Scaffold(body: PortfolioTab())),
     );
 
+/// 持仓页在真机上是可滚动的一长条；默认 800x600 测试视口只会构建首屏，
+/// 底部的持仓行 / 交易记录入口根本不进树，`find` 就会假阴性。
+/// 这里把视口拉高（宽度保持 800，不影响换行与排版断言），让整页一次性建完。
+Future<void> _pump(WidgetTester tester, FakeFirebaseFirestore db) async {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(_wrap(db));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _seed(FakeFirebaseFirestore db) async {
   await db.collection('positions').doc('NVDA').set({
     'ticker': 'NVDA', 'shares': 10, 'avgCost': 150.0,
@@ -50,8 +61,7 @@ void main() {
   testWidgets('overview shows cash, market value and pnl from quotes', (tester) async {
     final db = FakeFirebaseFirestore();
     await _seedOverview(db);
-    await tester.pumpWidget(_wrap(db));
-    await tester.pumpAndSettle();
+    await _pump(tester, db);
     // 汇率 1.25：现金 5000USD→€4000；股票市值 2457.50USD→€1966；
     // 总市值 €5966.00；总浮动盈亏 = (2457.5-2000)/2000 = +22.88%（折算不变），
     // 与 NVDA 自身 +33.83% 、AAPL 自身 -10.00% 均不同，可唯一定位总览行文本。
@@ -71,8 +81,7 @@ void main() {
   testWidgets('edit cash via dialog', (tester) async {
     final db = FakeFirebaseFirestore();
     await _seed(db);
-    await tester.pumpWidget(_wrap(db));
-    await tester.pumpAndSettle();
+    await _pump(tester, db);
     await tester.tap(find.byKey(const Key('cashCard')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('cashField')), '8888');
@@ -83,8 +92,7 @@ void main() {
 
   testWidgets('add position via FAB dialog', (tester) async {
     final db = FakeFirebaseFirestore();
-    await tester.pumpWidget(_wrap(db));
-    await tester.pumpAndSettle();
+    await _pump(tester, db);
     expect(find.text('暂无持仓'), findsOneWidget);
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
@@ -104,8 +112,7 @@ void main() {
   testWidgets('edit and delete existing position', (tester) async {
     final db = FakeFirebaseFirestore();
     await _seed(db);
-    await tester.pumpWidget(_wrap(db));
-    await tester.pumpAndSettle();
+    await _pump(tester, db);
     await tester.tap(find.textContaining('NVDA').first);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('posShares')), '20');
@@ -128,8 +135,7 @@ void main() {
   testWidgets('cancelling the delete confirmation keeps the position', (tester) async {
     final db = FakeFirebaseFirestore();
     await _seed(db);
-    await tester.pumpWidget(_wrap(db));
-    await tester.pumpAndSettle();
+    await _pump(tester, db);
     await tester.tap(find.textContaining('NVDA').first);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('posDelete')));
@@ -147,8 +153,7 @@ void main() {
       'ticker': 'NVDA', 'shares': 10.5, 'avgCost': 150.25,
       'updatedAt': '2026-08-01T00:00:00+00:00',
     });
-    await tester.pumpWidget(_wrap(db));
-    await tester.pumpAndSettle();
+    await _pump(tester, db);
     await tester.tap(find.textContaining('NVDA').first);
     await tester.pumpAndSettle();
     expect(find.text('10.5'), findsOneWidget);
@@ -182,8 +187,7 @@ void main() {
         (tester) async {
       final db = FakeFirebaseFirestore();
       await seedEur(db);   // 持仓 €1000 / 现金 €1000 → 各 50%
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       expect(find.text('集中度'), findsOneWidget);
       expect(find.textContaining('最大 50.0%'), findsOneWidget);   // 汇总行
       // 图例：每段色带都能对上是哪只（持仓一项 + 现金一项）
@@ -197,8 +201,7 @@ void main() {
       // 回归：无子节点的 ColoredBox 在松高度约束下会算出 0 高，整条色带消失。
       final db = FakeFirebaseFirestore();
       await seedEur(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       final segs = find.descendant(
           of: find.byType(ClipRRect), matching: find.byType(ColoredBox));
       expect(segs, findsNWidgets(2));   // 一段持仓 + 一段现金
@@ -213,8 +216,7 @@ void main() {
         (tester) async {
       final db = FakeFirebaseFirestore();
       await seedEur(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
 
       await tester.tap(find.text('ENEL.MI'));                 // 打开编辑框
       await tester.pumpAndSettle();
@@ -249,8 +251,7 @@ void main() {
         'ticker': 'ENEL.MI', 'side': 'sell', 'shares': 10.0, 'price': 12.0,
         'date': '2026-07-20', 'realizedPnl': 40.0, 'avgCostAtTrade': 8.0,
       });
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       expect(find.text('已实现'), findsOneWidget);      // 收益卡的拆解项
       expect(find.text('€40.00'), findsOneWidget);
     });
@@ -262,8 +263,7 @@ void main() {
         'ticker': 'ENEL.MI', 'side': 'buy', 'shares': 10.0, 'price': 8.0,
         'date': '2026-07-01',
       });
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       expect(find.byKey(const Key('tradeHistoryEntry')), findsOneWidget);
       expect(find.text('交易记录'), findsOneWidget);
     });
@@ -298,8 +298,7 @@ void main() {
         'ticker': 'ENEL.MI', 'date': '2026-07-15', 'amount': 30.0,
         'perShare': 0.3, 'shares': 100.0, 'source': 'auto',
       });
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       expect(find.text('累计收益'), findsOneWidget);
       // 浮动 +€200（100×(10−8)）+ 已实现 €40 + 分红 €30 = €270，成本 €800 → +33.75%
       expect(find.text('€270.00'), findsOneWidget);
@@ -313,8 +312,7 @@ void main() {
         (tester) async {
       final db = FakeFirebaseFirestore();
       await seedEur2(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       await tester.tap(find.text('ENEL.MI'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('posBuy')));
@@ -334,8 +332,7 @@ void main() {
     testWidgets('FAB offers buy / enter-existing / record-income', (tester) async {
       final db = FakeFirebaseFirestore();
       await seedEur2(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       await tester.tap(find.byKey(const Key('addFab')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('fabBuy')), findsOneWidget);
@@ -347,8 +344,7 @@ void main() {
         (tester) async {
       final db = FakeFirebaseFirestore();
       await seedEur2(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       await tester.tap(find.byKey(const Key('addFab')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('fabIncome')));
@@ -391,8 +387,7 @@ void main() {
         (tester) async {
       final db = FakeFirebaseFirestore();
       await seedTaxed(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       // 浮动 200 + 分红 100 = 税前 300；税 26 → 税后 274
       expect(find.text('€300.00'), findsOneWidget);
       expect(find.textContaining('税后 €274.00'), findsOneWidget);
@@ -402,8 +397,7 @@ void main() {
     testWidgets('position dialog carries the opened-on date', (tester) async {
       final db = FakeFirebaseFirestore();
       await seedTaxed(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       await tester.tap(find.text('ENEL.MI'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('posOpenedAt')), '2026-07-01');
@@ -430,8 +424,7 @@ void main() {
         (tester) async {
       final db = FakeFirebaseFirestore();
       await seedMin(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       await openIncome(tester);
       await tester.enterText(find.byKey(const Key('incomeTicker')), 'ENEL.MI');
       await tester.enterText(find.byKey(const Key('incomeAmount')), '100');
@@ -443,8 +436,7 @@ void main() {
         (tester) async {
       final db = FakeFirebaseFirestore();
       await seedMin(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       await openIncome(tester);
       // 反序：先金额后标的——回归此前只在金额变化时才算的漏洞
       await tester.enterText(find.byKey(const Key('incomeAmount')), '100');
@@ -456,8 +448,7 @@ void main() {
     testWidgets('a hand-edited tax is never overwritten', (tester) async {
       final db = FakeFirebaseFirestore();
       await seedMin(db);
-      await tester.pumpWidget(_wrap(db));
-      await tester.pumpAndSettle();
+      await _pump(tester, db);
       await openIncome(tester);
       await tester.enterText(find.byKey(const Key('incomeTicker')), 'ENEL.MI');
       await tester.enterText(find.byKey(const Key('incomeAmount')), '100');
@@ -471,6 +462,106 @@ void main() {
       final row = (await db.collection('income').get()).docs.single.data();
       expect(row['amount'], 200.0);
       expect(row['taxAmount'], 13.0);
+    });
+  });
+
+  group('分层可视化与编辑', () {
+    // ENEL €4000(卫星) + VUAA €2000(核心) + BTP €1000(防守) + 现金 €3000 = €10000
+    Future<void> seedLayers(FakeFirebaseFirestore db) async {
+      await db.collection('positions').doc('ENEL.MI').set({
+        'ticker': 'ENEL.MI', 'shares': 400, 'avgCost': 9.0, 'updatedAt': '2026-08-01T00:00:00+00:00',
+      });
+      await db.collection('positions').doc('VUAA.MI').set({
+        'ticker': 'VUAA.MI', 'shares': 20, 'avgCost': 90.0, 'updatedAt': '2026-08-01T00:00:00+00:00',
+      });
+      await db.collection('positions').doc('IT0005696320').set({
+        'ticker': 'IT0005696320', 'shares': 10, 'avgCost': 100.0,
+        'updatedAt': '2026-08-01T00:00:00+00:00', 'holdToMaturity': true,
+      });
+      await db.collection('meta').doc('portfolio').set({'cash': 3000.0, 'currency': 'EUR'});
+      await db.collection('meta').doc('policy').set({
+        'layerMap': {'VUAA.MI': 'core'},
+        'usdLookthrough': {'VUAA.MI': 100},
+      });
+      await db.collection('briefs').doc('2026-08-01').set({
+        'date': '2026-08-01', 'markdownZh': 'x', 'tickers': <String>[],
+        'createdAt': '2026-08-01T00:00:00+00:00',
+        'quotes': {
+          'ENEL.MI': {'close': 10.0, 'pctChange': 0.0},
+          'VUAA.MI': {'close': 100.0, 'pctChange': 0.0},
+          'IT0005696320': {'close': 100.0, 'pctChange': 0.0},
+          'EURUSD=X': {'close': 1.1, 'pctChange': 0.0},
+        },
+      });
+    }
+
+    testWidgets('layer card shows each layer with its target band', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedLayers(db);
+      await _pump(tester, db);
+      expect(find.text('仓位分层'), findsOneWidget);
+      expect(find.text('防守'), findsWidgets);
+      // 占比要收窄到分层卡内断言：持仓行的权重百分比可能与层占比数值相同
+      Finder inCard(String s) => find.descendant(
+          of: find.byKey(const Key('layerCard')), matching: find.text(s));
+      expect(inCard('40.0%'), findsOneWidget);      // 卫星 4000/10000
+      // 核心 2000/10000；美元敞口也恰好是 20%（VUAA 全额穿透），故卡内两处
+      expect(inCard('20.0%'), findsNWidgets(2));
+      expect(inCard('10.0%'), findsOneWidget);      // 防守 1000/10000
+      expect(find.textContaining('目标 60–85%'), findsOneWidget);
+    });
+
+    testWidgets('breaches are tagged over-cap / below-floor', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedLayers(db);
+      await _pump(tester, db);
+      expect(find.textContaining('超上限'), findsOneWidget);      // 卫星 40% > 15%
+      expect(find.textContaining('低于下限'), findsOneWidget);    // 防守 10% < 60%
+    });
+
+    testWidgets('cash and USD exposure flags sit under the layers',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedLayers(db);
+      await _pump(tester, db);
+      expect(find.text('30.0%'), findsWidgets);        // 现金 3000/10000
+      expect(find.textContaining('美元敞口'), findsOneWidget);
+      expect(find.textContaining('上限 25%'), findsOneWidget);
+      // VUAA 走 usdLookthrough 100% → €2000/€10000 = 20% 的底层美元敞口
+      expect(
+          find.descendant(
+              of: find.byKey(const Key('layerCard')),
+              matching: find.text('20.0%')),
+          findsNWidgets(2));                           // 核心层 + 美元敞口
+    });
+
+    testWidgets('position row shows its layer and hold-to-maturity tag',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedLayers(db);
+      await _pump(tester, db);
+      expect(find.textContaining('卫星'), findsWidgets);          // ENEL 行
+      expect(find.textContaining('持有到期'), findsWidgets);       // BTP 行
+    });
+
+    testWidgets('editing a position writes layer and hold-to-maturity',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedLayers(db);
+      await _pump(tester, db);
+      await tester.tap(find.text('ENEL.MI'));
+      await tester.pumpAndSettle();
+      // 缺省推断为卫星，改成核心
+      await tester.tap(find.descendant(
+          of: find.byKey(const Key('posLayer')), matching: find.text('核心')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('posHoldToMaturity')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('posSave')));
+      await tester.pumpAndSettle();
+      final pos = (await db.collection('positions').doc('ENEL.MI').get()).data()!;
+      expect(pos['layer'], 'core');
+      expect(pos['holdToMaturity'], isTrue);
     });
   });
 }

@@ -75,24 +75,6 @@ class WealthRepo {
     await _db.collection('trades').add(data);
   }
 
-  /// Records a trade and marks its originating suggestion accepted atomically:
-  /// either both writes land or neither does (avoids a trade doc with no
-  /// matching accepted suggestion if the app crashes mid-write).
-  Future<void> acceptWithTrade({
-    required String suggestionId, required String ticker, required String side,
-    required double shares, required double price, required String date,
-  }) async {
-    final batch = _db.batch();
-    batch.set(_db.collection('trades').doc(), {
-      'ticker': ticker, 'side': side, 'shares': shares, 'price': price,
-      'date': date, 'suggestionId': suggestionId,
-    });
-    batch.update(_db.collection('suggestions').doc(suggestionId), {
-      'status': 'accepted', 'resolvedAt': utcNowIso(),
-    });
-    await batch.commit();
-  }
-
   /// 最近的成交流水（新到旧）。
   Stream<List<Trade>> trades({int limit = 200}) => _db
       .collection('trades')
@@ -141,7 +123,10 @@ class WealthRepo {
   ///
   /// 卖出股数超过持仓时按持仓全额处理（避免负股数）。`suggestionId` 非空时
   /// 顺带把那条建议标记为已采纳。
-  Future<void> applyTrade({
+  ///
+  /// 返回 false 表示这笔没落地——只会发生在「卖出但没有持仓」这种情形，
+  /// 调用方据此给用户提示，而不是静默关掉对话框。
+  Future<bool> applyTrade({
     required String ticker, required String side, required double shares,
     required double price, required String date, String? suggestionId,
   }) async {
@@ -152,7 +137,7 @@ class WealthRepo {
 
     final isSell = side == 'sell';
     final qty = isSell ? (shares > held ? held : shares) : shares;
-    if (qty <= 0) return;
+    if (qty <= 0) return false;
 
     final meta = await _db.collection('meta').doc('portfolio').get();
     final cash = (meta.data()?['cash'] as num?)?.toDouble() ?? 0.0;
@@ -208,16 +193,19 @@ class WealthRepo {
       final watch = await _db.collection('watchlist').doc(ticker).get();
       if (!watch.exists) await addWatch(ticker);
     }
+    return true;
   }
 
   Future<void> setPosition({
     required String ticker, required double shares, required double avgCost,
-    String? openedAt,
+    String? openedAt, String? layer, bool? holdToMaturity,
   }) async {
     // merge 写：别把 runner/其他字段（如 openedAt）冲掉
     await _db.collection('positions').doc(ticker).set({
       'ticker': ticker, 'shares': shares, 'avgCost': avgCost,
-      if (openedAt != null && openedAt.isNotEmpty) 'openedAt': openedAt,
+      if ((openedAt ?? '').isNotEmpty) 'openedAt': openedAt!,
+      if ((layer ?? '').isNotEmpty) 'layer': layer!,
+      'holdToMaturity': ?holdToMaturity,
       'updatedAt': utcNowIso(),
     }, SetOptions(merge: true));
     // 持仓自动加入自选（已在自选里则不动，保留其 deepFreq 设置）。
@@ -270,6 +258,13 @@ class WealthRepo {
     return chatRef.id;
   }
 
+
+  /// meta/policy：仓位管理参数（后端闸门与客户端展示读同一份）。
+  Stream<Map<String, dynamic>> policyConfig() => _db
+      .collection('meta')
+      .doc('policy')
+      .snapshots()
+      .map((s) => s.data() ?? const {});
 
   /// meta/settings（当前只有 lang: zh|en），三端实时同步。
   Stream<Map<String, dynamic>> settings() => _db

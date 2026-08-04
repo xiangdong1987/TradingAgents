@@ -243,8 +243,14 @@ class _AcceptDialog extends ConsumerStatefulWidget {
 }
 
 class _AcceptDialogState extends ConsumerState<_AcceptDialog> {
-  final _shares = TextEditingController();
+  // 预填建议股数（被 Policy 钳过的就是钳后的数）；被拦住的建议不填，
+  // 逼你自己想清楚要下多少。
+  late final _shares = TextEditingController(
+      text: (widget.suggestion.isBlocked || widget.suggestion.shares == null)
+          ? ''
+          : formatShares(widget.suggestion.shares!).replaceAll(',', ''));
   final _price = TextEditingController();
+  var _prefilledPrice = false;
 
   @override
   void dispose() {
@@ -265,10 +271,16 @@ class _AcceptDialogState extends ConsumerState<_AcceptDialog> {
       final price = double.tryParse(_price.text);
       if (shares == null || shares <= 0 || price == null || price <= 0) return;
       final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
-      // Batched write: trade doc + suggestion status flip land atomically.
-      await repo.acceptWithTrade(
-          suggestionId: widget.suggestion.id, ticker: widget.suggestion.ticker,
-          side: _side, shares: shares, price: price, date: today);
+      // 走 applyTrade：一次 batch 里记流水 + 改持仓 + 改现金 + 把建议标记采纳，
+      // 统计与实际持仓不会脱节（早先的 acceptWithTrade 只写流水，已弃用）。
+      final landed = await repo.applyTrade(
+          ticker: widget.suggestion.ticker, side: _side, shares: shares,
+          price: price, date: today, suggestionId: widget.suggestion.id);
+      if (!landed && mounted) {
+        final t = ref.read(l10nProvider);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t.nothingToSell)));
+      }
     } else {
       await repo.resolveSuggestion(widget.suggestion.id, accepted: true);
     }
@@ -279,6 +291,13 @@ class _AcceptDialogState extends ConsumerState<_AcceptDialog> {
   Widget build(BuildContext context) {
     final t = ref.watch(l10nProvider);
     final s = widget.suggestion;
+    // 成交价缺省当前行情（建议里带的 entry 是信号价，可能已过时）
+    final quotes = ref.watch(latestBriefProvider).value?.quotes ?? const {};
+    final quote = quotes[s.ticker];
+    if (!_prefilledPrice && quote != null) {
+      _price.text = quote.close.toStringAsFixed(2);
+      _prefilledPrice = true;
+    }
     return AlertDialog(
       title: Text(t.acceptTitle(s.ticker, s.action.toUpperCase())),
       content: Column(

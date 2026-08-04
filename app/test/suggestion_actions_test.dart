@@ -49,6 +49,11 @@ void main() {
   testWidgets('accept with trade records linked trade doc', (tester) async {
     final db = FakeFirebaseFirestore();
     final id = await _seedPending(db);
+    // trim → sell：applyTrade 需要有持仓才卖得出去（否则不落库，见下一个用例）
+    await db.collection('positions').doc('NVDA').set({
+      'ticker': 'NVDA', 'shares': 10.0, 'avgCost': 150.0, 'updatedAt': 'x',
+    });
+    await db.collection('meta').doc('portfolio').set({'cash': 0.0, 'currency': 'USD'});
     await tester.pumpWidget(_wrap(db));
     await tester.pumpAndSettle();
     await tester.tap(find.text('采纳'));
@@ -76,6 +81,22 @@ void main() {
     expect(find.text('🐢 海龟'), findsOneWidget); // 引擎建议(NVDA)无 chip
     expect(find.textContaining('海龟入场'), findsOneWidget);
   });
+
+  testWidgets('selling with no position tells you nothing was recorded',
+      (tester) async {
+    final db = FakeFirebaseFirestore();
+    await _seedPending(db);        // trim NVDA，但库里没有 NVDA 持仓
+    await tester.pumpWidget(_wrap(db));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('采纳'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('tradeShares')), '3');
+    await tester.enterText(find.byKey(const Key('tradePrice')), '200.5');
+    await tester.tap(find.byKey(const Key('acceptWithTrade')));
+    await tester.pumpAndSettle();
+    expect((await db.collection('trades').get()).docs, isEmpty);
+    expect(find.text('没有可卖的持仓，这笔没有记录'), findsOneWidget);
+  });
 }
 
 Future<void> _seedTurtle(FakeFirebaseFirestore db) async {
@@ -85,4 +106,5 @@ Future<void> _seedTurtle(FakeFirebaseFirestore db) async {
     'analysisId': '', 'source': 'turtle', 'meta': {'system': 's1'},
     'status': 'pending', 'createdAt': '2026-08-01T01:00:00+00:00',
   });
+
 }

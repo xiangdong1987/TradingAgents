@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n.dart';
+import '../logic/policy.dart';
 import '../logic/portfolio_math.dart';
 import '../logic/tax.dart';
 import '../models/models.dart';
 import '../providers.dart';
 import 'trades_page.dart';
+import 'widgets/layer_card.dart';
 import 'widgets/pnl.dart';
 import 'widgets/ticker_field.dart';
 
@@ -26,6 +28,8 @@ class PortfolioTab extends ConsumerWidget {
     final incomes = ref.watch(incomeProvider).value ?? const <Income>[];
     final ret = cumulativeReturn(summary, trades, incomes, quotes);
     final conc = concentration(positions, meta, quotes);
+    final policy = ref.watch(policyProvider);
+    final layers = layerBreakdown(positions, meta, quotes, policy);
     final weights = {for (final s in conc?.stats ?? const []) s.ticker: s.weightPct};
 
     return Scaffold(
@@ -86,6 +90,8 @@ class PortfolioTab extends ConsumerWidget {
             ),
           ),
           if (ret != null) _ReturnCard(ret: ret),
+          if (layers != null)
+            LayerCard(key: const Key('layerCard'), breakdown: layers),
           if (conc != null) _ConcentrationCard(conc: conc),
           if (positions.isEmpty)
             Padding(
@@ -113,15 +119,8 @@ class PortfolioTab extends ConsumerWidget {
               ListTile(
                 title: Text(p.ticker,
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                subtitle: Text(
-                  [
-                    t.positionSubtitle(
-                        p.shares.toStringAsFixed(0), p.avgCost.toStringAsFixed(2)),
-                    if (weights[p.ticker] case final w?)
-                      '${w.toStringAsFixed(1)}%',
-                  ].join(' · '),
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
+                subtitle: PositionSubtitle(
+                    position: p, weightPct: weights[p.ticker], policy: policy),
                 trailing: _positionTrailing(t, p, quotes[p.ticker]),
                 onTap: () => showDialog<void>(
                     context: context,
@@ -496,6 +495,9 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
       text: widget.existing == null ? '' : _fmtPrefill(widget.existing!.avgCost));
   late final _openedAt =
       TextEditingController(text: widget.existing?.openedAt ?? '');
+  // 分层与持有到期：为空时用 Policy 的推断值当初值，用户改了才写进文档
+  String? _layer;
+  bool? _htm;
 
   @override
   void dispose() {
@@ -515,7 +517,7 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
     }
     await ref.read(repoProvider).setPosition(
         ticker: ticker, shares: shares, avgCost: avgCost,
-        openedAt: _openedAt.text.trim());
+        openedAt: _openedAt.text.trim(), layer: _layer, holdToMaturity: _htm);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -550,60 +552,109 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
   Widget build(BuildContext context) {
     final t = ref.watch(l10nProvider);
     final isNew = widget.existing == null;
+    final policy = ref.watch(policyProvider);
+    final ticker = widget.existing?.ticker ?? _ticker.text.trim().toUpperCase();
+    final inferredLayer = policy.layerOf(ticker, widget.existing);
+    final inferredHtm = policy.isHoldToMaturity(ticker, widget.existing);
     return AlertDialog(
       title: Text(isNew ? t.newPosition : t.editPosition(widget.existing!.ticker)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isNew)
-            TickerField(fieldKey: const Key('posTicker'), controller: _ticker),
-          TextField(
-            key: const Key('posShares'),
-            controller: _shares,
-            decoration: InputDecoration(labelText: t.shares),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-          TextField(
-            key: const Key('posAvgCost'),
-            controller: _avgCost,
-            decoration: InputDecoration(labelText: t.avgCost),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-          TextField(
-            key: const Key('posOpenedAt'),
-            controller: _openedAt,
-            decoration: InputDecoration(
-                labelText: t.openedAt, helperText: t.openedAtHint,
-                helperMaxLines: 2),
-          ),
-        ],
+      // 字段变多了，手机上键盘弹起会超出可用高度，内容自己滚
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isNew)
+              TickerField(fieldKey: const Key('posTicker'), controller: _ticker),
+            TextField(
+              key: const Key('posShares'),
+              controller: _shares,
+              decoration: InputDecoration(labelText: t.shares),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+            TextField(
+              key: const Key('posAvgCost'),
+              controller: _avgCost,
+              decoration: InputDecoration(labelText: t.avgCost),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+            TextField(
+              key: const Key('posOpenedAt'),
+              controller: _openedAt,
+              decoration: InputDecoration(
+                  labelText: t.openedAt, helperText: t.openedAtHint,
+                  helperMaxLines: 2),
+            ),
+            const SizedBox(height: 12),
+            // 分层决定这只标的走哪条单一上限、算进哪个目标区间；缺省由 Policy 推断
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(t.layerField,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            ),
+            const SizedBox(height: 4),
+            SegmentedButton<String>(
+              key: const Key('posLayer'),
+              style: SegmentedButton.styleFrom(
+                  visualDensity: VisualDensity.compact),
+              segments: [
+                for (final l in allLayers)
+                  ButtonSegment(value: l, label: Text(t.layerName(l))),
+              ],
+              selected: {_layer ?? inferredLayer},
+              onSelectionChanged: (v) => setState(() => _layer = v.first),
+            ),
+            SwitchListTile(
+              key: const Key('posHoldToMaturity'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(t.holdToMaturity, style: const TextStyle(fontSize: 14)),
+              value: _htm ?? inferredHtm,
+              onChanged: (v) => setState(() => _htm = v),
+            ),
+            // 买入/卖出会另开一个流水框，跟保存/取消不是一类动作；放进表单里
+            // 一行两个——五个按钮挤在 actions 里会竖排，把保存推到最下面。
+            if (!isNew) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonal(
+                      key: const Key('posBuy'),
+                      onPressed: () {
+                        final p = widget.existing!;
+                        Navigator.of(context).pop();
+                        showDialog<void>(
+                            context: context,
+                            builder: (_) => _BuyDialog(position: p));
+                      },
+                      child: Text(t.buy),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonal(
+                      key: const Key('posSell'),
+                      onPressed: () {
+                        final p = widget.existing!;
+                        Navigator.of(context).pop();   // 关掉编辑框再开卖出框
+                        showDialog<void>(
+                            context: context,
+                            builder: (_) => _SellDialog(position: p));
+                      },
+                      child: Text(t.sell),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
       actions: [
         if (!isNew)
           TextButton(
               key: const Key('posDelete'), onPressed: _delete, child: Text(t.delete)),
-        if (!isNew)
-          FilledButton.tonal(
-            key: const Key('posBuy'),
-            onPressed: () {
-              final p = widget.existing!;
-              Navigator.of(context).pop();
-              showDialog<void>(
-                  context: context, builder: (_) => _BuyDialog(position: p));
-            },
-            child: Text(t.buy),
-          ),
-        if (!isNew)
-          FilledButton.tonal(
-            key: const Key('posSell'),
-            onPressed: () {
-              final p = widget.existing!;
-              Navigator.of(context).pop();          // 关掉编辑框再开卖出框
-              showDialog<void>(
-                  context: context, builder: (_) => _SellDialog(position: p));
-            },
-            child: Text(t.sell),
-          ),
         TextButton(
             onPressed: () => Navigator.of(context).pop(), child: Text(t.cancel)),
         FilledButton(key: const Key('posSave'), onPressed: _save, child: Text(t.save)),

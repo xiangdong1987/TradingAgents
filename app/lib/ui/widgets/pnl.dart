@@ -13,6 +13,10 @@ import '../../logic/portfolio_math.dart' show isEurListing;
 final _money = NumberFormat('#,##0.00');
 String formatMoney(double v) => _money.format(v);
 
+/// 股数：整数不带小数点，带零头保留（1234 → '1,234'，10.5 → '10.5'）。
+String formatShares(double v) =>
+    v == v.roundToDouble() ? NumberFormat('#,##0').format(v) : v.toString();
+
 /// iOS system green for gains, red for losses (>= 0 counts as a gain).
 Color pnlColor(double v) => v >= 0 ? const Color(0xFF34C759) : const Color(0xFFFF3B30);
 

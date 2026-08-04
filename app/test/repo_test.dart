@@ -89,22 +89,30 @@ void main() {
     });
   });
 
-  test('acceptWithTrade writes the trade and flips suggestion status in one batch', () async {
-    final ref = await db.collection('suggestions').add({
-      'ticker': 'NVDA', 'action': 'trim', 'rationale': 'r', 'analysisId': 'a',
+  test('applyTrade with a suggestionId records the fill and flips the suggestion',
+      () async {
+    // acceptWithTrade 已删除：采纳建议统一走 applyTrade，这样持仓与现金
+    // 会跟着动，统计不会和实际脱节。
+    await db.collection('positions').doc('NVDA').set({
+      'ticker': 'NVDA', 'shares': 10.0, 'avgCost': 150.0, 'updatedAt': 'x',
+    });
+    await db.collection('meta').doc('portfolio').set({'cash': 5000.0, 'currency': 'USD'});
+    final sug = await db.collection('suggestions').add({
+      'ticker': 'NVDA', 'action': 'add', 'rationale': 'r', 'analysisId': 'a1',
       'status': 'pending', 'createdAt': '2026-08-01T00:00:00+00:00',
     });
-    await repo.acceptWithTrade(
-        suggestionId: ref.id, ticker: 'NVDA', side: 'sell', shares: 3, price: 200.5,
-        date: '2026-08-01');
-    final trades = (await db.collection('trades').get()).docs;
-    expect(trades.single.data(), {
-      'ticker': 'NVDA', 'side': 'sell', 'shares': 3.0, 'price': 200.5,
-      'date': '2026-08-01', 'suggestionId': ref.id,
-    });
-    final suggestion = (await db.collection('suggestions').doc(ref.id).get()).data()!;
-    expect(suggestion['status'], 'accepted');
-    expect(suggestion['resolvedAt'], endsWith('+00:00'));
+    await repo.applyTrade(ticker: 'NVDA', side: 'buy', shares: 5, price: 200,
+        date: '2026-08-03', suggestionId: sug.id);
+    final trade = (await db.collection('trades').get()).docs.single.data();
+    expect(trade['suggestionId'], sug.id);
+    expect(trade['shares'], 5);
+    expect((await db.collection('suggestions').doc(sug.id).get()).data()!['status'],
+        'accepted');
+    // 持仓与现金同步更新（这正是旧 acceptWithTrade 缺的部分）
+    final pos = (await db.collection('positions').doc('NVDA').get()).data()!;
+    expect(pos['shares'], 15);
+    expect((await db.collection('meta').doc('portfolio').get()).data()!['cash'],
+        5000 - 1000);
   });
 
   test('setPosition/deletePosition/setCash roundtrip', () async {

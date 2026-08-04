@@ -1,6 +1,6 @@
 # 仓位管理方案（Position Management Policy）
 
-日期：2026-08-02　状态：**P1 已落地（2026-08-04）**；P2/P3 待做
+日期：2026-08-02　状态：**P1 + P2 已落地（2026-08-04）**；P3 待做
 
 > P1 实现：`assistant/policy.py`（纯函数，六道买入闸 + EUR 快照 + 钳制/定股数）、
 > `meta/policy` 配置、策略引擎与 advisor 双路接闸、组合估值改 EUR 统一并修正
@@ -171,10 +171,12 @@ maxSingleIssuerPct，不允许一次性滚回同一只新券恢复 60%+ 集中�
   落库补 meta（shares/stop）+ 需要 N 时经 get_ohlc_history 取数；strategies engine
   组合级闸 + 按标的币种口径传组合值；组合估值 EUR 统一；`setPosition` 改 merge 写；
   建议卡 rationale 写明被钳制/被闸的原因。
-- **P2 App 可视化**：Suggestion 解析 meta（shares/stop/blocked 上卡片）；持仓 tab
-  权重列 + 分层集中度条 + 越界高亮；layer/holdToMaturity 编辑 UI；采纳对话框预填
-  建议股数/现价；成交后自动更新持仓与现金（现金簿记自动化后，P1 的现金闸才从
-  「手工维护数据」升级为可信数据——在此之前闸门结论以用户录入准确为前提）。
+- **P2 App 可视化**（已落地 2026-08-04）：Suggestion 解析 meta（shares/stop/blocked
+  上卡片）；持仓 tab 权重列 + 分层集中度条 + 越界高亮；layer/holdToMaturity 编辑
+  UI；采纳对话框预填建议股数/现价；成交后自动更新持仓与现金（现金簿记自动化后，
+  P1 的现金闸才从「手工维护数据」升级为可信数据——在此之前闸门结论以用户录入
+  准确为前提）。前端阈值镜像在 `app/lib/logic/policy.dart`，两端都以 Firestore
+  `meta/policy` 为准。
 - **P3 闭环**：每日收盘止损检查 job（触发即出提示卡）；单元账本与风险预算改为消费
   trades 实际成交（而非建议股数）；review 扩展仓位维度；BTP 到期再配置向导（含
   发行人分散规则）。
