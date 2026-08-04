@@ -14,6 +14,7 @@ from assistant.strategies import REGISTRY, ScanContext
 
 logger = logging.getLogger(__name__)
 
+DISMISS_COOLDOWN_DAYS = 7   # 忽略后 N 天不再生成同 ticker+动作的建议
 BARS_CALENDAR_DAYS = 200  # ≈135 根日线，覆盖 55 日通道 + 20 日 ATR 暖机
 
 
@@ -71,14 +72,18 @@ def rebuild_units(suggestions: list[dict], strategy: str, position: dict | None)
         elif s.get("action") in ("sell", "trim"):
             units = []
     if not units and position is not None:
+        # seeded=True：这个仓不是海龟在突破点建的。策略侧据此跳过金字塔加仓
+        # （avgCost 当参照会让所有浮盈老仓永远处于"加仓窗口"），只做止损/退出监控。
         units = [{"entry": position.get("avgCost", 0.0),
-                  "shares": position.get("shares"), "system": "s1", "n": None}]
+                  "shares": position.get("shares"), "system": "s1", "n": None,
+                  "seeded": True}]
     return [u for u in units if u["entry"]]
 
 
 def run_scan(store, job: dict, today: str, *,
              fetch_bars=get_ohlc_history, fetch_quote=get_quote) -> dict:
     """执行一次策略扫描，返回 {"scanned": n, "created": k} 供 job 文档记录。"""
+    from datetime import datetime, timedelta
     cfg = store.get_strategy_config()
     names = resolve_strategies(job, cfg)
     if not names:
@@ -90,6 +95,10 @@ def run_scan(store, job: dict, today: str, *,
     cash = store.get_portfolio_meta().get("cash", 0.0)
     portfolio_value = _portfolio_value(positions, cash, fetch_quote)
     pending = store.pending_suggestions()
+    # 忽略冷却：同 ticker+策略+动作在 N 天内被 dismissed 过就不再生成，
+    # 否则条件仍成立时每次扫描都会把用户刚忽略的建议原样端回来。
+    cooldown_cutoff = (datetime.strptime(today, "%Y-%m-%d")
+                       - timedelta(days=DISMISS_COOLDOWN_DAYS)).strftime("%Y-%m-%d")
 
     scanned = created = 0
     for name in names:
@@ -111,7 +120,8 @@ def run_scan(store, job: dict, today: str, *,
                 continue
             scanned += 1
             position = positions.get(ticker)
-            units = rebuild_units(store.suggestions_for_ticker(ticker), name, position)
+            history = store.suggestions_for_ticker(ticker)
+            units = rebuild_units(history, name, position)
             ctx = ScanContext(ticker=ticker, bars=bars, position=position,
                               units=units, portfolio_value=portfolio_value,
                               cash=cash, params=params)
@@ -125,6 +135,14 @@ def run_scan(store, job: dict, today: str, *,
                        and p.get("action") == sig.action for p in pending):
                     logger.info("dedup: pending %s/%s for %s exists",
                                 name, sig.action, ticker)
+                    continue
+                if any(h.get("source") == name and h.get("action") == sig.action
+                       and h.get("status") == "dismissed"
+                       and str(h.get("resolvedAt") or h.get("createdAt") or "")[:10]
+                           >= cooldown_cutoff
+                       for h in history):
+                    logger.info("cooldown: %s/%s for %s dismissed within %dd",
+                                name, sig.action, ticker, DISMISS_COOLDOWN_DAYS)
                     continue
                 meta = dict(sig.meta)
                 if sig.shares is not None:

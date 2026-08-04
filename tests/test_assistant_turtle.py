@@ -157,3 +157,32 @@ def test_seed_unit_without_n_uses_current_atr():
 def test_held_quiet_market_no_signal():
     closes = [100.0] * 70 + [100.1]
     assert scan(ctx(closes, units=[{"entry": 100.0, "shares": 10, "system": "s1", "n": 1.0}])) == []
+
+
+def test_seed_unit_never_pyramids():
+    """老持仓种子单元（seeded）浮盈再多也不发加仓——不存在"入场战役"。"""
+    closes = [100.0] * 70 + [130.0]   # 现价远超 entry+½N
+    seed = {"entry": 62.0, "shares": 100, "system": "s1", "n": None, "seeded": True}
+    assert scan(ctx(closes, units=[seed])) == []
+
+
+def test_seed_unit_still_monitors_stop_and_exit():
+    # 止损仍生效（大跌把当前 N 抬高后触发 entry−2N）
+    closes = [110.0] * 70 + [102.0]
+    seed = {"entry": 105.0, "shares": 10, "system": "s1", "n": None, "seeded": True}
+    sigs = scan(ctx(closes, units=[seed]))
+    assert len(sigs) == 1 and sigs[0].meta["trigger"] == "stop"
+    # 反向突破退出仍生效
+    closes2 = [100.0] * 60 + [104.0] * 10 + [99.4]
+    seed2 = {"entry": 60.0, "shares": 10, "system": "s1", "n": 1.0, "seeded": True}
+    sigs2 = scan(ctx(closes2, units=[seed2]))
+    assert len(sigs2) == 1 and sigs2[0].meta["trigger"] == "exit"
+
+
+def test_real_unit_still_pyramids():
+    """真·海龟单元（无 seeded 标记）加仓行为不受影响——回归保护。"""
+    closes = [100.0] * 70 + [100.2]
+    real = {"entry": 99.5, "shares": 10, "system": "s1", "n": 1.0}
+    sigs = scan(ctx(closes, units=[real]))
+    assert len(sigs) == 1 and sigs[0].meta["trigger"] == "pyramid"
+

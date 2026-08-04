@@ -77,7 +77,13 @@ def test_rebuild_units_from_accepted_suggestions_and_sell_reset():
 
 def test_rebuild_units_seeds_from_position():
     units = rebuild_units([], "turtle", {"ticker": "T", "shares": 8, "avgCost": 55.0})
-    assert units == [{"entry": 55.0, "shares": 8, "system": "s1", "n": None}]
+    assert units == [{"entry": 55.0, "shares": 8, "system": "s1", "n": None,
+                      "seeded": True}]
+    # 由已采纳建议重建的真单元不带 seeded 标记
+    accepted = [{"source": "turtle", "status": "accepted", "action": "buy",
+                 "createdAt": "1", "meta": {"entry": 50.0, "shares": 8, "n": 1.0}}]
+    real = rebuild_units(accepted, "turtle", {"ticker": "T", "shares": 8, "avgCost": 55.0})
+    assert "seeded" not in real[0]
 
 
 def test_run_scan_creates_suggestion_with_source_and_meta():
@@ -142,3 +148,44 @@ def test_run_scan_held_position_uses_seed_unit_for_exit():
     assert result["created"] == 1
     (doc,) = store._suggestions.values()
     assert doc["action"] == "sell" and doc["meta"]["trigger"] == "stop"
+
+
+def test_run_scan_cooldown_after_dismissal():
+    """忽略后 7 天内不重复生成；过了窗口才允许再来。"""
+    store = make_store()
+    bars = fake_bars_factory({"BRK": BREAKOUT_CLOSES})
+    run_scan(store, {"strategy": "turtle"}, "2026-08-01",
+             fetch_bars=bars, fetch_quote=quote_100)
+    (sid,) = store._suggestions
+    store.update_suggestion(sid, {"status": "dismissed",
+                                  "resolvedAt": "2026-08-01T10:00:00+00:00"})
+
+    # 3 天后：冷却期内，不生成
+    run_scan(store, {"strategy": "turtle"}, "2026-08-04",
+             fetch_bars=bars, fetch_quote=quote_100)
+    assert len(store._suggestions) == 1
+
+    # 9 天后：冷却期外，条件仍成立则允许再生成
+    run_scan(store, {"strategy": "turtle"}, "2026-08-10",
+             fetch_bars=bars, fetch_quote=quote_100)
+    assert len(store._suggestions) == 2
+
+
+def test_run_scan_cooldown_only_blocks_same_action():
+    """冷却按动作区分：忽略过 buy 不影响 sell 类信号。"""
+    store = make_store(watch=(),
+                       positions=[{"ticker": "HELD", "shares": 10, "avgCost": 105.0}])
+    # 先塞一条 3 天前被忽略的 add（同 ticker 不同动作）
+    sid = store.save_suggestion({"ticker": "HELD", "source": "turtle",
+                                 "action": "add", "status": "dismissed",
+                                 "createdAt": "2026-07-30T00:00:00+00:00",
+                                 "resolvedAt": "2026-07-30T00:00:00+00:00"})
+    del sid
+    # 大跌触发止损 sell（见 turtle 测试的种子止损剧本）
+    closes = [110.0] * 70 + [102.0]
+    run_scan(store, {"strategy": "turtle", "scope": "positions"}, "2026-08-01",
+             fetch_bars=fake_bars_factory({"HELD": closes}), fetch_quote=quote_100)
+    sells = [s for s in store._suggestions.values()
+             if s.get("action") == "sell" and s.get("status") == "pending"]
+    assert len(sells) == 1
+

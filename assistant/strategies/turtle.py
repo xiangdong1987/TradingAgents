@@ -169,8 +169,11 @@ def _scan_held(ctx: ScanContext, p: dict, n: float, close: float, last: int) -> 
                   "channel": round(exit_ch, 4)},
         )]
 
-    # 3) ½N 金字塔加仓
-    if len(ctx.units) < p["maxUnits"] and close >= entry + 0.5 * unit_n:
+    # 3) ½N 金字塔加仓 —— 种子单元不参与：加仓属于"入场战役"（突破买入后
+    # 每涨 ½N 加一单元），老持仓不是海龟建的、不存在战役，avgCost 参照只会
+    # 让浮盈仓永远触发。种子仓只保留上面的止损/退出监控。
+    if (not unit.get("seeded")) and len(ctx.units) < p["maxUnits"] \
+            and close >= entry + 0.5 * unit_n:
         shares = unit_shares(ctx.portfolio_value, p["riskPct"], n)
         if shares >= 1:
             stop = close - 2 * n
