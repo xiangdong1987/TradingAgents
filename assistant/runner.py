@@ -41,7 +41,7 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     from assistant.events import refresh_calendar
     from assistant.chat import answer_chat
     from assistant.strategies import engine as strategy_engine
-    from assistant.income import sync_dividends
+    from assistant.income import backfill_income_tax, sync_dividends
     from assistant.store import utc_now_iso
 
     if now_et is None:
@@ -155,6 +155,9 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
         today_str = now_et.strftime("%Y-%m-%d")
         marker = store.get_meta_doc("income_sync") if hasattr(store, "get_meta_doc") else None
         if marker is None or marker.get("date") != today_str:
+            healed = backfill_income_tax(store)   # 老记录缺税额时自愈
+            if healed:
+                logger.info("dividend sync: backfilled tax on %d row(s)", healed)
             kwargs = {} if fetch_dividends is None else {"fetch_dividends": fetch_dividends}
             n = sync_dividends(store, today_str, **kwargs)
             if n:

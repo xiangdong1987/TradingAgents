@@ -79,6 +79,32 @@ def opened_floor(store, ticker: str) -> str | None:
     return min(buys) if buys else None
 
 
+def backfill_income_tax(store) -> int:
+    """给缺税额的历史 income 行补上（按标的缺省税率）。返回补齐的行数。
+
+    税字段是后加的，早先入库的行没有 ``taxAmount``；而 :func:`sync_dividends`
+    靠 ``has_income`` 去重，永远不会回头改它们。所以每轮同步顺带扫一遍自愈，
+    schema 以后再扩字段也走同一条路。已有税额（包括手工填的 0）不动。
+    """
+    fixed = 0
+    for row in store.list_income():
+        if row.get("taxAmount") is not None:
+            continue
+        ticker = row.get("ticker") or ""
+        amount = float(row.get("amount") or 0)
+        pct = default_tax_pct(ticker)
+        store.merge_income_fields(row["id"], {
+            "taxAmount": round(amount * pct / 100, 4),
+            "taxPct": pct,
+            # 早先的自动行没记这个标记；自动入账从不动现金
+            "creditedCash": bool(row.get("creditedCash")),
+        })
+        fixed += 1
+        logger.info("income tax backfilled: %s %s %s × %s%%",
+                    ticker, row.get("date"), amount, pct)
+    return fixed
+
+
 def sync_dividends(store, today: str, *, fetch_dividends=get_dividends,
                    lookback_days: int = LOOKBACK_DAYS) -> int:
     """Record any newly-reported dividends for held tickers. Returns rows added."""

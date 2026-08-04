@@ -413,4 +413,64 @@ void main() {
           '2026-07-01');
     });
   });
+
+  group('分红自动算税', () {
+    Future<void> seedMin(FakeFirebaseFirestore db) async {
+      await db.collection('meta').doc('portfolio').set({'cash': 0.0, 'currency': 'EUR'});
+    }
+
+    Future<void> openIncome(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('addFab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('fabIncome')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('italian holding gets 26% prefilled after amount entry',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedMin(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      await openIncome(tester);
+      await tester.enterText(find.byKey(const Key('incomeTicker')), 'ENEL.MI');
+      await tester.enterText(find.byKey(const Key('incomeAmount')), '100');
+      await tester.pumpAndSettle();
+      expect(find.text('26.00'), findsOneWidget);
+    });
+
+    testWidgets('ticker typed after the amount still triggers the tax prefill',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedMin(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      await openIncome(tester);
+      // 反序：先金额后标的——回归此前只在金额变化时才算的漏洞
+      await tester.enterText(find.byKey(const Key('incomeAmount')), '100');
+      await tester.enterText(find.byKey(const Key('incomeTicker')), 'MSFT');
+      await tester.pumpAndSettle();
+      expect(find.text('37.10'), findsOneWidget);   // 美股 15% + 意 26% 叠加
+    });
+
+    testWidgets('a hand-edited tax is never overwritten', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await seedMin(db);
+      await tester.pumpWidget(_wrap(db));
+      await tester.pumpAndSettle();
+      await openIncome(tester);
+      await tester.enterText(find.byKey(const Key('incomeTicker')), 'ENEL.MI');
+      await tester.enterText(find.byKey(const Key('incomeAmount')), '100');
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('incomeTax')), '13');  // 券商实际扣缴
+      await tester.enterText(find.byKey(const Key('incomeAmount')), '200');
+      await tester.pumpAndSettle();
+      expect(find.text('13'), findsOneWidget);       // 没被 52.00 覆盖
+      await tester.tap(find.byKey(const Key('incomeConfirm')));
+      await tester.pumpAndSettle();
+      final row = (await db.collection('income').get()).docs.single.data();
+      expect(row['amount'], 200.0);
+      expect(row['taxAmount'], 13.0);
+    });
+  });
 }

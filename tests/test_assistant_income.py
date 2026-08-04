@@ -153,3 +153,32 @@ def test_open_date_in_the_future_records_nothing():
     ])
     assert sync_dividends(store, "2026-08-03",
                           fetch_dividends=lambda t, a, b: [("2026-07-20", 0.5)]) == 0
+
+
+def test_backfill_fills_missing_tax_by_market():
+    from assistant.income import backfill_income_tax
+    store = MemoryStore()
+    store.add_income({"id": "ENEL.MI_2026-07-20", "ticker": "ENEL.MI",
+                      "date": "2026-07-20", "amount": 65.0, "source": "auto"})
+    store.add_income({"id": "MSFT_2026-05-21", "ticker": "MSFT",
+                      "date": "2026-05-21", "amount": 12.45, "source": "auto"})
+    assert backfill_income_tax(store) == 2
+    rows = {r["ticker"]: r for r in store.list_income()}
+    assert rows["ENEL.MI"]["taxPct"] == TAX_PCT_IT
+    assert rows["ENEL.MI"]["taxAmount"] == round(65.0 * 26 / 100, 4)
+    assert rows["MSFT"]["taxPct"] == TAX_PCT_US_TOTAL
+    assert rows["MSFT"]["taxAmount"] == round(12.45 * TAX_PCT_US_TOTAL / 100, 4)
+    assert rows["ENEL.MI"]["creditedCash"] is False
+
+
+def test_backfill_is_idempotent_and_respects_a_manual_zero():
+    from assistant.income import backfill_income_tax
+    store = MemoryStore()
+    store.add_income({"id": "a", "ticker": "ENEL.MI", "date": "d", "amount": 100.0,
+                      "taxAmount": 0.0, "source": "manual"})   # 用户明确填了 0
+    assert backfill_income_tax(store) == 0
+    assert store.list_income()[0]["taxAmount"] == 0.0
+
+    store.add_income({"id": "b", "ticker": "ENEL.MI", "date": "d2", "amount": 50.0})
+    assert backfill_income_tax(store) == 1
+    assert backfill_income_tax(store) == 0        # 再跑一次不重复改

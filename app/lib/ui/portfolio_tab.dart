@@ -741,11 +741,21 @@ class _IncomeDialogState extends ConsumerState<_IncomeDialog> {
     super.dispose();
   }
 
+  /// 税额按标的缺省税率预填（意 26% / 美股 15%+26% 叠加）。用户手改过就不再覆盖。
+  void _recalcTax() {
+    if (_taxEdited) return;
+    final gross = double.tryParse(_amount.text);
+    final ticker = _ticker.text.trim().toUpperCase();
+    if (gross == null || gross <= 0 || ticker.isEmpty) return;
+    _tax.text = (gross * defaultIncomeTaxPct(ticker) / 100).toStringAsFixed(2);
+  }
+
   Future<void> _submit() async {
     final ticker = _ticker.text.trim().toUpperCase();
     final amount = double.tryParse(_amount.text);
     final date = _date.text.trim();
     if (ticker.isEmpty || amount == null || amount <= 0 || date.isEmpty) return;
+    _recalcTax();   // 兜底：两个字段都齐了但还没触发过重算时补上
     final t = ref.read(l10nProvider);
     await ref.read(repoProvider).addIncome(
         ticker: ticker, amount: amount, date: date,
@@ -765,21 +775,16 @@ class _IncomeDialogState extends ConsumerState<_IncomeDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TickerField(fieldKey: const Key('incomeTicker'), controller: _ticker),
+          TickerField(
+              fieldKey: const Key('incomeTicker'),
+              controller: _ticker,
+              onChanged: (_) => setState(_recalcTax)),
           TextField(
             key: const Key('incomeAmount'),
             controller: _amount,
             decoration: InputDecoration(labelText: '${t.incomeAmount}（${t.preTax}）'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            onChanged: (v) {
-              // 税额按标的缺省税率预填，可覆盖
-              final gross = double.tryParse(v);
-              final ticker = _ticker.text.trim().toUpperCase();
-              if (gross != null && ticker.isNotEmpty && !_taxEdited) {
-                _tax.text = (gross * defaultIncomeTaxPct(ticker) / 100)
-                    .toStringAsFixed(2);
-              }
-            },
+            onChanged: (_) => setState(_recalcTax),
           ),
           TextField(
             key: const Key('incomeTax'),

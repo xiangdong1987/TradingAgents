@@ -37,6 +37,7 @@ class Store(Protocol):
     def has_income(self, ticker: str, date: str) -> bool: ...
     def list_income(self) -> list[dict]: ...
     def list_trades(self) -> list[dict]: ...
+    def merge_income_fields(self, income_id: str, fields: dict) -> None: ...
     def get_meta_doc(self, name: str) -> dict | None: ...
     def save_meta_doc(self, name: str, data: dict) -> None: ...
     def has_analysis_since(self, ticker: str, since_iso: str) -> bool: ...
@@ -163,6 +164,9 @@ class MemoryStore:
 
     def list_income(self) -> list[dict]:
         return [{"id": iid, **doc} for iid, doc in self._income.items()]
+
+    def merge_income_fields(self, income_id: str, fields: dict) -> None:
+        self._income[income_id].update(fields)
 
     def list_trades(self) -> list[dict]:
         return [dict(d) for d in getattr(self, "_trades", [])]
@@ -391,6 +395,9 @@ class FirestoreStore:
     def list_income(self) -> list[dict]:
         return [{"id": d.id, **d.to_dict()}
                 for d in self._db.collection("income").stream()]
+
+    def merge_income_fields(self, income_id: str, fields: dict) -> None:
+        self._db.collection("income").document(income_id).set(fields, merge=True)
 
     def list_trades(self) -> list[dict]:
         return [{"id": d.id, **d.to_dict()}

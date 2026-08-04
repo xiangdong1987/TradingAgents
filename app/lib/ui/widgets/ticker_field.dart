@@ -18,6 +18,7 @@ class TickerField extends ConsumerStatefulWidget {
     this.fieldKey,
     this.label,
     this.onSubmitted,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -26,6 +27,9 @@ class TickerField extends ConsumerStatefulWidget {
   /// 覆盖输入框 label；不传时用 l10n 的通用提示（代码或名称）。
   final String? label;
   final VoidCallback? onSubmitted;
+
+  /// 输入或选中候选后回调（当前文本）。调用方据此联动其他字段（如按标的算税率）。
+  final ValueChanged<String>? onChanged;
 
   @override
   ConsumerState<TickerField> createState() => _TickerFieldState();
@@ -56,7 +60,10 @@ class _TickerFieldState extends ConsumerState<TickerField> {
       optionsBuilder: (value) =>
           SymbolIndex.instance?.search(value.text) ?? const <SymbolEntry>[],
       displayStringForOption: (e) => e.symbol,
-      onSelected: (e) => widget.controller.text = e.symbol,
+      onSelected: (e) {
+        widget.controller.text = e.symbol;
+        widget.onChanged?.call(e.symbol);
+      },
       fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
         return TextField(
           key: widget.fieldKey,
@@ -64,6 +71,7 @@ class _TickerFieldState extends ConsumerState<TickerField> {
           focusNode: focusNode,
           decoration: InputDecoration(labelText: label),
           textCapitalization: TextCapitalization.characters,
+          onChanged: widget.onChanged,
           onSubmitted: (_) {
             onFieldSubmitted();
             widget.onSubmitted?.call();
