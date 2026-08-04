@@ -85,15 +85,22 @@ class _LayerRow extends ConsumerWidget {
             Text('${stat.pct.toStringAsFixed(1)}%',
                 style: TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w700, color: color)),
-            const Spacer(),
-            Text(
-              [
-                t.bandLabel(stat.band.lo.toStringAsFixed(0),
-                    stat.band.hi.toStringAsFixed(0)),
-                if (stat.overCap) t.overCapTag,
-                if (stat.underFloor) t.underFloorTag,
-              ].join(' · '),
-              style: TextStyle(fontSize: 11, color: bad ? color : grey),
+            const SizedBox(width: 8),
+            // 窄屏（尤其英文）放不下就省略后半段——越界标签排在前面，
+            // 被截掉的是目标区间而不是「超上限」这个关键信号。
+            Expanded(
+              child: Text(
+                [
+                  if (stat.overCap) t.overCapTag,
+                  if (stat.underFloor) t.underFloorTag,
+                  t.bandLabel(stat.band.lo.toStringAsFixed(0),
+                      stat.band.hi.toStringAsFixed(0)),
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: TextStyle(fontSize: 11, color: bad ? color : grey),
+              ),
             ),
           ],
         ),
@@ -154,16 +161,28 @@ class _MiniFlag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+    // 英文文案（USD exposure …）在 320 宽下放不下整条，标签与括号里的阈值
+    // 都可省略；数值本身不动——它才是要看的东西。
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('$label ', style: TextStyle(fontSize: 12, color: grey)),
+        Flexible(
+          child: Text('$label ',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: grey)),
+        ),
         Text(value,
             style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: bad ? pnlColor(-1) : null)),
-        Text(' ($hint)', style: TextStyle(fontSize: 11, color: grey)),
+        Flexible(
+          child: Text(' ($hint)',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: grey)),
+        ),
       ],
     );
   }
@@ -184,24 +203,21 @@ class PositionSubtitle extends ConsumerWidget {
     final grey = Theme.of(context).colorScheme.onSurfaceVariant;
     final layer = policy.layerOf(position.ticker, position);
     final over = weightPct != null && weightPct! > policy.singleCapFor(layer);
-    return Row(
+    // Wrap 而不是 Row：英文文案长得多，窄屏放不下时折到第二行，
+    // 而不是把权重/分层顶出屏幕（Row 会溢出，且丢的正是右边的信息）。
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Flexible(
-          child: Text(
-            t.positionSubtitle(position.shares.toStringAsFixed(0),
-                position.avgCost.toStringAsFixed(2)),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: grey),
-          ),
+        Text(
+          t.positionSubtitle(position.shares.toStringAsFixed(0),
+              position.avgCost.toStringAsFixed(2)),
+          style: TextStyle(color: grey),
         ),
-        if (weightPct != null) ...[
-          Text(' · ', style: TextStyle(color: grey)),
-          Text('${weightPct!.toStringAsFixed(1)}%',
+        if (weightPct != null)
+          Text(' · ${weightPct!.toStringAsFixed(1)}%',
               style: TextStyle(
                   color: over ? pnlColor(-1) : grey,
                   fontWeight: over ? FontWeight.w700 : null)),
-        ],
         Text(' · ${t.layerName(layer)}',
             style: TextStyle(color: grey, fontSize: 12)),
         if (policy.isHoldToMaturity(position.ticker, position))

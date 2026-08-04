@@ -71,12 +71,16 @@ class TradesPage extends ConsumerWidget {
                   title: Text(tr.ticker,
                       style: const TextStyle(
                           fontSize: 17, fontWeight: FontWeight.w700)),
+                  // 税后金额放副标题（可换行），trailing 只留成交额 + 盈亏：
+                  // 三者挤在 trailing 一列时，英文「After tax」会把行顶出屏幕。
                   subtitle: Text(
                     [
                       t.positionSubtitle(
                           formatMoney(tr.shares).replaceAll(RegExp(r'\.00$'), ''),
                           tr.price.toStringAsFixed(2)),
                       tr.date,
+                      if (tr.realizedPnl != null && (tr.taxAmount ?? 0) > 0)
+                        '${t.afterTax} $prefix${formatMoney(tr.realizedNet!)}',
                       if (tr.suggestionId != null) t.fromSuggestion,
                     ].join(' · '),
                     style: TextStyle(color: grey, fontSize: 12),
@@ -88,13 +92,8 @@ class TradesPage extends ConsumerWidget {
                       MoneyText(tr.amount, size: 15, prefix: prefix, color: grey),
                       if (tr.realizedPnl case final pnl?) ...[
                         const SizedBox(height: 2),
-                        // 盈亏与税后合在一行：trailing 槽高度只够两行，三行会溢出
                         Text(
-                          [
-                            '${pnl >= 0 ? '+' : ''}$prefix${formatMoney(pnl)}',
-                            if ((tr.taxAmount ?? 0) > 0)
-                              '${t.afterTax} $prefix${formatMoney(tr.realizedNet!)}',
-                          ].join(' · '),
+                          '${pnl >= 0 ? '+' : ''}$prefix${formatMoney(pnl)}',
                           style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,

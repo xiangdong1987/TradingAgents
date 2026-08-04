@@ -65,23 +65,27 @@ class PortfolioTab extends ConsumerWidget {
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        _OverviewColumn(
-                            label: t.pnlFloating,
-                            value: summary.pnlPct == null
-                                ? const Text('—')
-                                : Text(
-                                    pnlLabel(summary.pnlPct!),
-                                    style: TextStyle(
-                                        color: pnlColor(summary.pnlPct!),
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700),
-                                  )),
-                        const SizedBox(width: 28),
-                        _OverviewColumn(
-                            label: t.cashTapHint,
-                            value: summary.cashEur == null
-                                ? const Text('—')
-                                : MoneyText(summary.cashEur!, size: 15, prefix: '€')),
+                        Expanded(
+                          child: _OverviewColumn(
+                              label: t.pnlFloating,
+                              value: summary.pnlPct == null
+                                  ? const Text('—')
+                                  : Text(
+                                      pnlLabel(summary.pnlPct!),
+                                      style: TextStyle(
+                                          color: pnlColor(summary.pnlPct!),
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700),
+                                    )),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _OverviewColumn(
+                              label: t.cashTapHint,
+                              value: summary.cashEur == null
+                                  ? const Text('—')
+                                  : MoneyText(summary.cashEur!, size: 15, prefix: '€')),
+                        ),
                       ],
                     ),
                   ],
@@ -256,21 +260,31 @@ class _ReturnCard extends ConsumerWidget {
             const SizedBox(height: 10),
             Row(
               children: [
-                _OverviewColumn(
-                    label: t.unrealized,
-                    value: MoneyText(ret.unrealizedEur, size: 14, prefix: '€',
-                        color: pnlColor(ret.unrealizedEur))),
-                const SizedBox(width: 24),
-                _OverviewColumn(
-                    label: t.realized,
-                    value: MoneyText(ret.realizedEur, size: 14, prefix: '€',
-                        color: ret.realizedEur == 0 ? grey : pnlColor(ret.realizedEur))),
-                const SizedBox(width: 24),
-                _OverviewColumn(
-                    key: const Key('incomeStat'),
-                    label: t.incomeLabel,
-                    value: MoneyText(ret.incomeEur, size: 14, prefix: '€',
-                        color: ret.incomeEur == 0 ? grey : pnlColor(ret.incomeEur))),
+                Expanded(
+                  child: _OverviewColumn(
+                      label: t.unrealized,
+                      value: MoneyText(ret.unrealizedEur, size: 14, prefix: '€',
+                          color: pnlColor(ret.unrealizedEur))),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _OverviewColumn(
+                      label: t.realized,
+                      value: MoneyText(ret.realizedEur, size: 14, prefix: '€',
+                          color: ret.realizedEur == 0
+                              ? grey
+                              : pnlColor(ret.realizedEur))),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _OverviewColumn(
+                      key: const Key('incomeStat'),
+                      label: t.incomeLabel,
+                      value: MoneyText(ret.incomeEur, size: 14, prefix: '€',
+                          color: ret.incomeEur == 0
+                              ? grey
+                              : pnlColor(ret.incomeEur))),
+                ),
               ],
             ),
           ],
@@ -403,11 +417,18 @@ class _OverviewColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 英文标签（Unrealized P&L / Dividends & interest）在 320~375 宽下比中文
+        // 长一倍，放不下就省略；数值缩放而不换行，保持三列对齐。
         Text(label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
                 fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 4),
-        value,
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FittedBox(fit: BoxFit.scaleDown, child: value),
+        ),
       ],
     );
   }

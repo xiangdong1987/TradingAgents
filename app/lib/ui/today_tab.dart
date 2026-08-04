@@ -184,25 +184,29 @@ class _OverviewBar extends ConsumerWidget {
             const SizedBox(height: 10),
             Row(
               children: [
-                _MiniStat(
-                  label: t.pnlFloating,
-                  value: summary.pnlPct == null
-                      ? const Text('—')
-                      : Text(
-                          pnlLabel(summary.pnlPct!),
-                          style: TextStyle(
-                              color: pnlColor(summary.pnlPct!),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700),
-                        ),
+                Expanded(
+                  child: _MiniStat(
+                    label: t.pnlFloating,
+                    value: summary.pnlPct == null
+                        ? const Text('—')
+                        : Text(
+                            pnlLabel(summary.pnlPct!),
+                            style: TextStyle(
+                                color: pnlColor(summary.pnlPct!),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700),
+                          ),
+                  ),
                 ),
-                const SizedBox(width: 28),
-                _MiniStat(
-                  label: t.cash,
-                  value: summary.cashEur == null
-                      ? const Text('—')
-                      : MoneyText(summary.cashEur!,
-                          size: 15, color: grey, prefix: '€'),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _MiniStat(
+                    label: t.cash,
+                    value: summary.cashEur == null
+                        ? const Text('—')
+                        : MoneyText(summary.cashEur!,
+                            size: 15, color: grey, prefix: '€'),
+                  ),
                 ),
               ],
             ),
@@ -224,11 +228,17 @@ class _MiniStat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 英文标签比中文长一倍，窄屏放不下就省略；数值缩放不换行
         Text(label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
                 fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 2),
-        value,
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FittedBox(fit: BoxFit.scaleDown, child: value),
+        ),
       ],
     );
   }
