@@ -54,8 +54,16 @@ def get_quote(ticker: str, _history=_yf_history, _fetch_html=None) -> dict:
     }
 
 
+def _clean_volume(v) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    return 0.0 if f != f else f   # NaN != NaN
+
+
 def _yf_history_ohlc(ticker: str, start: str, end: str) -> list[dict]:
-    """Ascending [{date, high, low, close}] daily bars via yfinance. Lazy import."""
+    """Ascending [{date, high, low, close, volume}] daily bars via yfinance. Lazy import."""
     import yfinance as yf
 
     end_excl = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -69,7 +77,8 @@ def _yf_history_ohlc(ticker: str, start: str, end: str) -> list[dict]:
         df.index = df.index.tz_localize(None)
     return [
         {"date": idx.strftime("%Y-%m-%d"), "high": float(r["High"]),
-         "low": float(r["Low"]), "close": float(r["Close"])}
+         "low": float(r["Low"]), "close": float(r["Close"]),
+         "volume": _clean_volume(r.get("Volume"))}
         for idx, r in df.iterrows()
     ]
 
@@ -216,3 +225,64 @@ def _borsa_fund_quote(isin: str, _fetch_html=_fetch_borsa_fund_html) -> dict:
     close, prev = _parse_borsa_fund_nav(_fetch_html(_BORSA_FUND_CODES[isin]))
     pct = 0.0 if not prev else round((close - prev) / prev * 100, 2)
     return {"ticker": isin, "close": close, "prevClose": prev, "pctChange": pct}
+
+
+def get_money_flow(ticker: str, end_date: str, *,
+                   _history=_yf_history_ohlc) -> dict | None:
+    """个股量价资金流：量比 / MFI14 / OBV 5日方向 / 5日涨跌 %。
+
+    日报用它给 LLM 喂可验证的数字。任何取数或数据不足的情况一律返回
+    None（调用方按「无量价数据」降级），绝不抛出。ISIN（Borsa 债券/基金）
+    没有成交量概念，直接 None。
+    """
+    if is_isin(ticker):
+        return None
+    try:
+        start = (datetime.strptime(end_date, "%Y-%m-%d")
+                 - timedelta(days=60)).strftime("%Y-%m-%d")
+        bars = [b for b in _history(ticker, start, end_date)
+                if b.get("volume") is not None]
+    except Exception:
+        return None
+    if len(bars) < 21:
+        return None
+    vols = [b["volume"] for b in bars]
+    avg20 = sum(vols[-21:-1]) / 20
+    if avg20 <= 0:
+        return None
+
+    # MFI14：typical price × volume 的正/负流量占比
+    tp = [(b["high"] + b["low"] + b["close"]) / 3 for b in bars]
+    pos = neg = 0.0
+    for i in range(len(bars) - 14, len(bars)):
+        flow = tp[i] * vols[i]
+        if tp[i] > tp[i - 1]:
+            pos += flow
+        elif tp[i] < tp[i - 1]:
+            neg += flow
+    mfi = 50.0 if pos + neg == 0 else 100 * pos / (pos + neg)
+
+    # OBV 近 5 日方向：首尾差 < 区间内绝对摆动的 20% 视为走平
+    obv = [0.0]
+    for i in range(1, len(bars)):
+        if bars[i]["close"] > bars[i - 1]["close"]:
+            obv.append(obv[-1] + vols[i])
+        elif bars[i]["close"] < bars[i - 1]["close"]:
+            obv.append(obv[-1] - vols[i])
+        else:
+            obv.append(obv[-1])
+    window = obv[-6:]
+    diff = window[-1] - window[0]
+    swing = sum(abs(window[j + 1] - window[j]) for j in range(len(window) - 1))
+    if swing == 0 or abs(diff) < 0.2 * swing:
+        obv_trend = "flat"
+    else:
+        obv_trend = "up" if diff > 0 else "down"
+
+    return {
+        "volumeRatio": round(vols[-1] / avg20, 2),
+        "mfi14": round(mfi, 1),
+        "obvTrend": obv_trend,
+        "chg5dPct": round((bars[-1]["close"] - bars[-6]["close"])
+                          / bars[-6]["close"] * 100, 2),
+    }

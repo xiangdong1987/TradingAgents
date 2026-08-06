@@ -82,3 +82,65 @@ def test_mapped_fund_isin_uses_borsa_fund_nav():
 
     with pytest.raises(QuoteUnavailable):
         _parse_borsa_fund_nav("<html>niente</html>")
+
+
+# ---------- get_money_flow ----------
+
+def _mf_bars(closes, volumes):
+    """等长 closes/volumes 造日线；high=low=close 让 typical price = close，便于手算。"""
+    return [
+        {"date": f"2026-07-{i+1:02d}", "high": c, "low": c, "close": c, "volume": v}
+        for i, (c, v) in enumerate(zip(closes, volumes))
+    ]
+
+
+def test_money_flow_all_up_hand_computed():
+    from assistant.quotes import get_money_flow
+    closes = list(range(10, 31))            # 21 根，10..30 严格上涨
+    volumes = [100.0] * 20 + [200.0]        # 末日放量
+    mf = get_money_flow("NVDA", "2026-08-01", _history=lambda t, s, e: _mf_bars(closes, volumes))
+    assert mf["volumeRatio"] == 2.0          # 200 / mean(前20根=100)
+    assert mf["mfi14"] == 100.0              # 全是正资金流
+    assert mf["obvTrend"] == "up"
+    assert mf["chg5dPct"] == 20.0            # (30-25)/25
+
+
+def test_money_flow_all_down():
+    from assistant.quotes import get_money_flow
+    closes = list(range(30, 9, -1))          # 30..10 严格下跌
+    volumes = [100.0] * 21
+    mf = get_money_flow("NVDA", "2026-08-01", _history=lambda t, s, e: _mf_bars(closes, volumes))
+    assert mf["mfi14"] == 0.0
+    assert mf["obvTrend"] == "down"
+    assert mf["chg5dPct"] == round((10 - 15) / 15 * 100, 2)
+
+
+def test_money_flow_flat_prices():
+    from assistant.quotes import get_money_flow
+    mf = get_money_flow("NVDA", "2026-08-01",
+                        _history=lambda t, s, e: _mf_bars([20.0] * 21, [100.0] * 21))
+    assert mf["mfi14"] == 50.0               # 无正无负 → 中性
+    assert mf["obvTrend"] == "flat"          # OBV 一直是 0
+    assert mf["chg5dPct"] == 0.0
+
+
+def test_money_flow_none_when_insufficient_or_no_volume():
+    from assistant.quotes import get_money_flow
+    few = _mf_bars(list(range(10, 30)), [100.0] * 20)          # 只有 20 根
+    assert get_money_flow("NVDA", "2026-08-01", _history=lambda t, s, e: few) is None
+    zero = _mf_bars(list(range(10, 31)), [0.0] * 21)           # 量全零
+    assert get_money_flow("NVDA", "2026-08-01", _history=lambda t, s, e: zero) is None
+
+
+def test_money_flow_none_for_isin_without_fetching():
+    from assistant.quotes import get_money_flow
+    def boom(t, s, e):
+        raise AssertionError("ISIN 不应该去拉日线")
+    assert get_money_flow("IT0005696320", "2026-08-01", _history=boom) is None
+
+
+def test_money_flow_none_on_fetch_error():
+    from assistant.quotes import get_money_flow
+    def boom(t, s, e):
+        raise RuntimeError("network down")
+    assert get_money_flow("NVDA", "2026-08-01", _history=boom) is None
