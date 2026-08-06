@@ -242,47 +242,47 @@ def get_money_flow(ticker: str, end_date: str, *,
                  - timedelta(days=60)).strftime("%Y-%m-%d")
         bars = [b for b in _history(ticker, start, end_date)
                 if b.get("volume") is not None]
+        if len(bars) < 21:
+            return None
+        vols = [b["volume"] for b in bars]
+        avg20 = sum(vols[-21:-1]) / 20
+        if avg20 <= 0:
+            return None
+
+        # MFI14：typical price × volume 的正/负流量占比
+        tp = [(b["high"] + b["low"] + b["close"]) / 3 for b in bars]
+        pos = neg = 0.0
+        for i in range(len(bars) - 14, len(bars)):
+            flow = tp[i] * vols[i]
+            if tp[i] > tp[i - 1]:
+                pos += flow
+            elif tp[i] < tp[i - 1]:
+                neg += flow
+        mfi = 50.0 if pos + neg == 0 else 100 * pos / (pos + neg)
+
+        # OBV 近 5 日方向：首尾差 < 区间内绝对摆动的 20% 视为走平
+        obv = [0.0]
+        for i in range(1, len(bars)):
+            if bars[i]["close"] > bars[i - 1]["close"]:
+                obv.append(obv[-1] + vols[i])
+            elif bars[i]["close"] < bars[i - 1]["close"]:
+                obv.append(obv[-1] - vols[i])
+            else:
+                obv.append(obv[-1])
+        window = obv[-6:]
+        diff = window[-1] - window[0]
+        swing = sum(abs(window[j + 1] - window[j]) for j in range(len(window) - 1))
+        if swing == 0 or abs(diff) < 0.2 * swing:
+            obv_trend = "flat"
+        else:
+            obv_trend = "up" if diff > 0 else "down"
+
+        return {
+            "volumeRatio": round(vols[-1] / avg20, 2),
+            "mfi14": round(mfi, 1),
+            "obvTrend": obv_trend,
+            "chg5dPct": round((bars[-1]["close"] - bars[-6]["close"])
+                              / bars[-6]["close"] * 100, 2),
+        }
     except Exception:
         return None
-    if len(bars) < 21:
-        return None
-    vols = [b["volume"] for b in bars]
-    avg20 = sum(vols[-21:-1]) / 20
-    if avg20 <= 0:
-        return None
-
-    # MFI14：typical price × volume 的正/负流量占比
-    tp = [(b["high"] + b["low"] + b["close"]) / 3 for b in bars]
-    pos = neg = 0.0
-    for i in range(len(bars) - 14, len(bars)):
-        flow = tp[i] * vols[i]
-        if tp[i] > tp[i - 1]:
-            pos += flow
-        elif tp[i] < tp[i - 1]:
-            neg += flow
-    mfi = 50.0 if pos + neg == 0 else 100 * pos / (pos + neg)
-
-    # OBV 近 5 日方向：首尾差 < 区间内绝对摆动的 20% 视为走平
-    obv = [0.0]
-    for i in range(1, len(bars)):
-        if bars[i]["close"] > bars[i - 1]["close"]:
-            obv.append(obv[-1] + vols[i])
-        elif bars[i]["close"] < bars[i - 1]["close"]:
-            obv.append(obv[-1] - vols[i])
-        else:
-            obv.append(obv[-1])
-    window = obv[-6:]
-    diff = window[-1] - window[0]
-    swing = sum(abs(window[j + 1] - window[j]) for j in range(len(window) - 1))
-    if swing == 0 or abs(diff) < 0.2 * swing:
-        obv_trend = "flat"
-    else:
-        obv_trend = "up" if diff > 0 else "down"
-
-    return {
-        "volumeRatio": round(vols[-1] / avg20, 2),
-        "mfi14": round(mfi, 1),
-        "obvTrend": obv_trend,
-        "chg5dPct": round((bars[-1]["close"] - bars[-6]["close"])
-                          / bars[-6]["close"] * 100, 2),
-    }

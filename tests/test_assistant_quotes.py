@@ -144,3 +144,12 @@ def test_money_flow_none_on_fetch_error():
     def boom(t, s, e):
         raise RuntimeError("network down")
     assert get_money_flow("NVDA", "2026-08-01", _history=boom) is None
+
+
+def test_money_flow_none_on_dirty_zero_close():
+    from assistant.quotes import get_money_flow
+    # 21 根 bars，close[-6] == 0（其余正常），不应抛 ZeroDivisionError，应返回 None
+    closes = list(range(10, 31))
+    closes[15] = 0.0  # bars[-6] 对应 index 15（倒数第6个）
+    volumes = [100.0] * 21
+    assert get_money_flow("NVDA", "2026-08-01", _history=lambda t, s, e: _mf_bars(closes, volumes)) is None
