@@ -4,12 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from assistant.lang import BILINGUAL_INSTRUCTION, split_bilingual
-from assistant.quotes import get_quote
+from assistant.quotes import get_money_flow, get_quote
 from assistant.store import utc_now_iso
 
 _PROMPT_TEMPLATE = """你是一位谨慎的投资研究助理。基于以下数据写一份每日投资日报（Markdown）。
-结构：## 组合概览（含现金与浮动盈亏）→ ## 个股点评（每只一两句）→ ## 值得注意（异动、风险，若某只股值得做一次深度多agent分析请点名）。
-只依据给出的数据，不要编造数字。日期：{today}
+结构：## 组合概览（含现金与浮动盈亏）→ ## 持仓点评（每只一两句，结合资金流）→ ## 自选分析与推荐 → ## 值得注意（异动、风险，若某只股值得做一次深度多agent分析请点名）。
+「自选分析与推荐」只写这些未持仓的自选股：{watch_only_line}。每只 1-2 句，结合行情、资金流与新闻，并以固定标签之一结尾：【值得深挖】【回调关注】【观望】【建议移除】。持仓股只出现在持仓点评，不要重复。
+只依据给出的数据，不要编造数字。资金流口径：量比 = 今日成交量/20日均量；MFI 为 14 日资金流指标（>80 超买，<20 超卖）；OBV 为能量潮方向。日期：{today}
 {bilingual}
 
 # 组合
@@ -28,7 +29,8 @@ def _default_fetch_news(ticker: str, start: str, end: str) -> str:
     return route_to_vendor("get_news", ticker, start, end)
 
 
-def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch_news=None) -> str:
+def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
+                         fetch_news=None, fetch_money_flow=get_money_flow) -> str:
     if fetch_news is None:
         fetch_news = _default_fetch_news
 
@@ -52,7 +54,20 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
             news = fetch_news(t, yesterday, today)
         except Exception:
             news = "（新闻获取失败）"
-        ticker_parts.append(f"## {t}\n{quote_line}\n近日新闻:\n{news}")
+        try:
+            mf = fetch_money_flow(t, today)
+        except Exception:
+            mf = None
+        if mf:
+            trend_txt = {"up": "5日走高", "down": "5日走低",
+                         "flat": "5日走平"}[mf["obvTrend"]]
+            mf_line = (f"资金流: 量比 {mf['volumeRatio']:.2f}，"
+                       f"MFI {mf['mfi14']:.0f}，OBV {trend_txt}，"
+                       f"5日 {mf['chg5dPct']:+.1f}%")
+        else:
+            mf_line = "资金流: 无量价数据"
+        tag = "（持仓）" if t in positions else "（自选）"
+        ticker_parts.append(f"## {t}{tag}\n{quote_line}\n{mf_line}\n近日新闻:\n{news}")
 
         pos = positions.get(t)
         if pos:
@@ -68,6 +83,9 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
                 f"- {t}: {pos['shares']} 股 @ 成本 {pos['avgCost']}，{pnl_str}"
             )
 
+    watch_only = sorted(watch - set(positions))
+    watch_only_line = ("、".join(watch_only)
+                       or "（无，此节写「今日无未持仓自选」即可）")
     prompt = _PROMPT_TEMPLATE.format(
         today=today,
         bilingual=BILINGUAL_INSTRUCTION,
@@ -75,6 +93,7 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote, fetch
         currency=meta.get("currency", "USD"),
         positions_block="\n".join(position_parts) or "（无持仓）",
         tickers_block="\n\n".join(ticker_parts) or "（自选与持仓均为空）",
+        watch_only_line=watch_only_line,
     )
     _add_fx_if_needed(quotes_map, tickers, fetch_quote)
     zh, en = split_bilingual(llm.invoke(prompt).content)
