@@ -29,7 +29,7 @@
   - **mfi14** = 标准 14 日 Money Flow Index（typical price × volume 的
     正/负流量比）
   - **obvTrend** = 近 5 个交易日 OBV 方向：`up` / `down` / `flat`
-    （首尾差超过区间内 OBV 绝对变动的 ±20% 才算方向，否则 flat）
+    （首尾差达到区间内 OBV 绝对变动的 ±20% 才算方向，否则 flat）
   - **chg5dPct** = 最近收盘 vs 往回数第 5 根日线收盘（`close[-1]` vs
     `close[-6]`）的涨跌 %
 - 返回 `None` 的情况：bars 不足 21 根、成交量全零、ISIN（Borsa 债券/基金
