@@ -4,14 +4,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from assistant.lang import BILINGUAL_INSTRUCTION, split_bilingual
-from assistant.quotes import get_money_flow, get_quote
+from assistant.quotes import (get_futures_snapshot, get_money_flow,
+                              get_positioning, get_quote)
 from assistant.store import utc_now_iso
 
 _PROMPT_TEMPLATE = """你是一位谨慎的投资研究助理。基于以下数据写一份每日投资日报（Markdown）。
 结构：## 组合概览（含现金与浮动盈亏）→ ## 持仓点评（每只一两句，结合资金流）→ ## 自选分析与推荐 → ## 值得注意（异动、风险，若某只股值得做一次深度多agent分析请点名）。
 「自选分析与推荐」只写这些未持仓的自选股：{watch_only_line}。每只 1-2 句，结合行情、资金流与新闻，并以固定标签之一结尾：【值得深挖】【回调关注】【观望】【建议移除】。持仓股只出现在持仓点评，不要重复。
-只依据给出的数据，不要编造数字。资金流口径：量比 = 今日成交量/20日均量；MFI 为 14 日资金流指标（>80 超买，<20 超卖）；OBV 为能量潮方向。日期：{today}
+只依据给出的数据，不要编造数字。资金流口径：量比 = 今日成交量/20日均量；MFI 为 14 日资金流指标（>80 超买，<20 超卖）；OBV 为能量潮方向。多空口径：空头占流通盘越高、环比上升 = 看空压力增；回补天数为空头全部回补所需交易日；期权 P/C>1 偏空、<1 偏多；做空数据为 FINRA 双周频，非实时。若有期指数据，组合概览开头点一句隔夜期指情绪。日期：{today}
 {bilingual}
+
+# 股指期货
+{futures_block}
 
 # 组合
 现金: {cash} {currency}
@@ -30,7 +34,9 @@ def _default_fetch_news(ticker: str, start: str, end: str) -> str:
 
 
 def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
-                         fetch_news=None, fetch_money_flow=get_money_flow) -> str:
+                         fetch_news=None, fetch_money_flow=get_money_flow,
+                         fetch_positioning=get_positioning,
+                         fetch_futures=get_futures_snapshot) -> str:
     if fetch_news is None:
         fetch_news = _default_fetch_news
 
@@ -66,8 +72,32 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
                        f"5日 {mf['chg5dPct']:+.1f}%")
         else:
             mf_line = "资金流: 无量价数据"
+        try:
+            posi = fetch_positioning(t)
+        except Exception:
+            posi = None
+        if posi:
+            segs = []
+            if "shortPctFloat" in posi:
+                seg = f"空头占流通 {posi['shortPctFloat']:.1f}%"
+                if "shortChangePct" in posi:
+                    seg += f"（环比 {posi['shortChangePct']:+.1f}%）"
+                segs.append(seg)
+            if "shortRatioDays" in posi:
+                segs.append(f"回补 {posi['shortRatioDays']} 天")
+            pc_bits = []
+            if "pcOi" in posi:
+                pc_bits.append(f"持仓 {posi['pcOi']}")
+            if "pcVol" in posi:
+                pc_bits.append(f"成交 {posi['pcVol']}")
+            if pc_bits:
+                segs.append("期权P/C " + " / ".join(pc_bits))
+            posi_line = "多空: " + "，".join(segs)
+        else:
+            posi_line = "多空: 无数据"
         tag = "（持仓）" if t in positions else "（自选）"
-        ticker_parts.append(f"## {t}{tag}\n{quote_line}\n{mf_line}\n近日新闻:\n{news}")
+        ticker_parts.append(
+            f"## {t}{tag}\n{quote_line}\n{mf_line}\n{posi_line}\n近日新闻:\n{news}")
 
         pos = positions.get(t)
         if pos:
@@ -86,6 +116,13 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
     watch_only = sorted(watch - set(positions))
     watch_only_line = ("、".join(watch_only)
                        or "（无，此节写「今日无未持仓自选」即可）")
+    try:
+        futs = fetch_futures()
+    except Exception:
+        futs = []
+    futures_block = ("\n".join(
+        f"{f['name']}: {f['close']}，{f['pctChange']:+.2f}%" for f in futs)
+        or "（期指数据缺失）")
     prompt = _PROMPT_TEMPLATE.format(
         today=today,
         bilingual=BILINGUAL_INSTRUCTION,
@@ -94,6 +131,7 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
         positions_block="\n".join(position_parts) or "（无持仓）",
         tickers_block="\n\n".join(ticker_parts) or "（自选与持仓均为空）",
         watch_only_line=watch_only_line,
+        futures_block=futures_block,
     )
     _add_fx_if_needed(quotes_map, tickers, fetch_quote)
     zh, en = split_bilingual(llm.invoke(prompt).content)

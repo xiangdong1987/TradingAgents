@@ -29,7 +29,8 @@ def test_brief_covers_watchlist_and_positions_and_saves():
     store, llm = make_store(), FakeLLM()
     md = generate_daily_brief(store, llm, "2026-08-01",
                               fetch_quote=ok_quote, fetch_news=lambda t, s, e: f"{t} news",
-                              fetch_money_flow=lambda t, d: None)
+                              fetch_money_flow=lambda t, d: None,
+                              fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     assert md == "# 日报\n一切正常"
     saved = store.get_brief("2026-08-01")
     assert saved["markdownZh"] == md and saved["date"] == "2026-08-01"
@@ -51,7 +52,8 @@ def test_brief_survives_single_ticker_failures():
     md = generate_daily_brief(store, llm, "2026-08-01",
                               fetch_quote=flaky_quote,
                               fetch_news=lambda t, s, e: (_ for _ in ()).throw(RuntimeError("net down")),
-                              fetch_money_flow=lambda t, d: None)
+                              fetch_money_flow=lambda t, d: None,
+                              fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     assert md                                                 # 仍产出
     assert "行情获取失败" in llm.prompts[0]                    # 失败股在 prompt 里标注而非丢弃
     assert "新闻获取失败" in llm.prompts[0]
@@ -65,7 +67,8 @@ def test_brief_handles_zero_cost_basis():
     store, llm = s, FakeLLM()
     md = generate_daily_brief(store, llm, "2026-08-01",
                               fetch_quote=ok_quote, fetch_news=lambda t, s, e: f"{t} news",
-                              fetch_money_flow=lambda t, d: None)
+                              fetch_money_flow=lambda t, d: None,
+                              fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     assert md                                                 # still generates
     assert "无成本价" in llm.prompts[0]                        # degraded label in prompt
     assert "GOOG" in llm.prompts[0]                           # ticker still included
@@ -75,7 +78,8 @@ def test_brief_stores_structured_quotes():
     store, llm = make_store(), FakeLLM()
     generate_daily_brief(store, llm, "2026-08-01",
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
-                         fetch_money_flow=lambda t, d: None)
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     saved = store.get_brief("2026-08-01")
     assert saved["quotes"]["NVDA"] == {"close": 110.0, "pctChange": 10.0}
     assert saved["quotes"]["AAPL"] == {"close": 110.0, "pctChange": 10.0}
@@ -90,7 +94,8 @@ def test_failed_quote_ticker_absent_from_quotes_map():
     store, llm = make_store(), FakeLLM()
     generate_daily_brief(store, llm, "2026-08-01",
                          fetch_quote=flaky_quote, fetch_news=lambda t, s, e: "n",
-                         fetch_money_flow=lambda t, d: None)
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     saved = store.get_brief("2026-08-01")
     assert "NVDA" not in saved["quotes"]
     assert saved["quotes"]["AAPL"]["close"] == 110.0
@@ -196,7 +201,8 @@ def test_brief_bilingual_reply_saves_both_languages():
 
     llm = BiLLM()
     md = generate_daily_brief(store, llm, "2026-08-01", fetch_quote=ok_quote,
-                              fetch_news=lambda *a: "news", fetch_money_flow=lambda t, d: None)
+                              fetch_news=lambda *a: "news", fetch_money_flow=lambda t, d: None,
+                              fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     assert md == "# 日报"
     brief = store.get_brief("2026-08-01")
     assert brief["markdownZh"] == "# 日报"
@@ -212,7 +218,8 @@ def test_brief_money_flow_line_in_prompt():
     store, llm = make_store(), FakeLLM()
     generate_daily_brief(store, llm, "2026-08-01",
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
-                         fetch_money_flow=_mf)
+                         fetch_money_flow=_mf,
+                         fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     prompt = llm.prompts[0]
     assert "量比 1.80" in prompt
     assert "MFI 62" in prompt
@@ -227,7 +234,8 @@ def test_brief_money_flow_degrades_to_placeholder():
     store, llm = make_store(), FakeLLM()
     generate_daily_brief(store, llm, "2026-08-01",
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
-                         fetch_money_flow=boom)
+                         fetch_money_flow=boom,
+                         fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     assert "无量价数据" in llm.prompts[0]
 
 
@@ -236,7 +244,8 @@ def test_brief_watch_only_section_lists_unheld_tickers():
     store, llm = make_store(), FakeLLM()
     generate_daily_brief(store, llm, "2026-08-01",
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
-                         fetch_money_flow=lambda t, d: None)
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     prompt = llm.prompts[0]
     assert "未持仓的自选股：NVDA" in prompt
     assert "## 持仓点评" in prompt and "## 自选分析与推荐" in prompt
@@ -252,5 +261,74 @@ def test_brief_watch_only_empty_when_all_watch_held():
     llm = FakeLLM()
     generate_daily_brief(s, llm, "2026-08-01",
                          fetch_quote=ok_quote, fetch_news=lambda t, s2, e: "n",
-                         fetch_money_flow=lambda t, d: None)
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     assert "未持仓的自选股：（无，此节写「今日无未持仓自选」即可）" in llm.prompts[0]
+
+
+def _posi(t):
+    return {"shortPctFloat": 1.39, "shortChangePct": 8.0,
+            "shortRatioDays": 2.24, "pcOi": 0.49, "pcVol": 0.5}
+
+
+def _futs():
+    return [{"name": "标普500期指", "close": 7779.75, "pctChange": 0.31},
+            {"name": "纳指100期指", "close": 29834.75, "pctChange": 0.55}]
+
+
+def test_brief_positioning_line_in_prompt():
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=_posi, fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    assert "多空: 空头占流通 1.4%（环比 +8.0%），回补 2.24 天，期权P/C 持仓 0.49 / 成交 0.5" in prompt
+
+
+def test_brief_positioning_partial_keys_render_available_segments():
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: {"shortRatioDays": 3.5},
+                         fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    assert "多空: 回补 3.5 天" in prompt
+    # 注意：口径说明行本身含「空头占流通盘」「期权 P/C」字样，
+    # 这里必须断言带「多空: 」前缀/渲染专用格式的片段，才不会误伤
+    assert "多空: 空头占流通" not in prompt and "期权P/C 持仓" not in prompt
+
+
+def test_brief_positioning_degrades_to_placeholder():
+    def boom(t):
+        raise RuntimeError("no data")
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=boom, fetch_futures=lambda: [])
+    assert "多空: 无数据" in llm.prompts[0]
+
+
+def test_brief_futures_block_in_prompt():
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None, fetch_futures=_futs)
+    prompt = llm.prompts[0]
+    assert "# 股指期货" in prompt
+    assert "标普500期指: 7779.75，+0.31%" in prompt
+    assert "纳指100期指: 29834.75，+0.55%" in prompt
+
+
+def test_brief_futures_block_placeholder_when_empty_or_raising():
+    def boom():
+        raise RuntimeError("nope")
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None, fetch_futures=boom)
+    assert "（期指数据缺失）" in llm.prompts[0]

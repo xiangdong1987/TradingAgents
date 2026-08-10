@@ -71,6 +71,7 @@ def test_run_once_runs_all_four_stages_in_order():
         graph_factory=lambda cfg: FakeGraph("BUY"),
         fetch_quote=fake_quote, fetch_news=fake_news,
         fetch_money_flow=lambda t, d: None,
+        fetch_positioning=lambda t: None, fetch_futures=lambda: [],
         trading_day_resolver=lambda d: d,
         fetch_calendar=lambda t: {},
     )

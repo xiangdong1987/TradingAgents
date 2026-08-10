@@ -25,7 +25,8 @@ ZOMBIE_AFTER_HOURS = 2
 
 def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
              graph_factory=None, fetch_quote=None, fetch_news=None,
-             fetch_money_flow=None, trading_day_resolver=None, fetch_calendar=None,
+             fetch_money_flow=None, fetch_positioning=None, fetch_futures=None,
+             trading_day_resolver=None, fetch_calendar=None,
              fetch_dividends=None, watch_interval=None) -> int:
     """One wake-up: zombie cleanup -> user jobs -> scheduled jobs -> review.
 
@@ -61,6 +62,10 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
             kwargs["fetch_news"] = fetch_news
         if fetch_money_flow is not None:
             kwargs["fetch_money_flow"] = fetch_money_flow
+        if fetch_positioning is not None:
+            kwargs["fetch_positioning"] = fetch_positioning
+        if fetch_futures is not None:
+            kwargs["fetch_futures"] = fetch_futures
         return generate_daily_brief(store, llm, today, **kwargs)
 
     def deep_fn(ticker: str, today: str) -> tuple[str, str]:
