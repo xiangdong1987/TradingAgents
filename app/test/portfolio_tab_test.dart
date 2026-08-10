@@ -568,8 +568,8 @@ void main() {
   group('atCost 开关', () {
     Future<FakeFirebaseFirestore> seedAtCost() async {
       final db = FakeFirebaseFirestore();
-      await db.collection('positions').doc('DEPOSITO2027').set({
-        'ticker': 'DEPOSITO2027', 'shares': 1, 'avgCost': 5000.0,
+      await db.collection('positions').doc('CASHDEP01').set({
+        'ticker': 'CASHDEP01', 'shares': 1, 'avgCost': 5000.0,
         'updatedAt': '2026-08-01T00:00:00+00:00', 'atCost': true,
       });
       await db.collection('meta').doc('portfolio').set(
