@@ -24,4 +24,11 @@ void main() {
       expect(defaultSellTax(0), 0);
     });
   });
+
+  test('德股分红默认 37.1%，意股 26%', () {
+    expect(defaultIncomeTaxPct('SAP.DE'), taxPctUsTotal);
+    expect(defaultIncomeTaxPct('ENEL.MI'), taxPctIt);
+    expect(defaultIncomeTaxPct('IT0005696320'), taxPctIt);
+    expect(defaultIncomeTaxPct('MSFT'), taxPctUsTotal);
+  });
 }

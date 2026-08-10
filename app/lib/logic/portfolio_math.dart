@@ -14,8 +14,14 @@ final _isinRe = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
 /// 12 位 ISIN（如 IT0001247391）——单只债券按 ISIN 跟踪，行情来自 Borsa Italiana。
 bool isIsin(String ticker) => _isinRe.hasMatch(ticker);
 
-/// Borsa Italiana listings (.MI) and Italian ISINs are EUR-quoted.
+/// Borsa Italiana (.MI) / Xetra (.DE) 与意大利 ISIN 按欧元报价。
 bool isEurListing(String ticker) =>
+    ticker.endsWith('.MI') || ticker.endsWith('.DE') ||
+    (ticker.startsWith('IT') && isIsin(ticker));
+
+/// 意大利上市（税率口径）：分红 26% 只适用于这些；德股虽是欧元计价，
+/// 税负同美股 37.1%——所以这个谓词必须与 [isEurListing] 分开。
+bool isItalianListing(String ticker) =>
     ticker.endsWith('.MI') || (ticker.startsWith('IT') && isIsin(ticker));
 
 class PortfolioSummary {
@@ -73,8 +79,9 @@ Concentration? concentration(
 
   final stats = <PositionStat>[];
   for (final p in positions) {
-    final priceNative = quotes[p.ticker]?.close ?? p.avgCost;
-    final v = toEur(p.ticker, p.shares * priceNative);
+    final v = p.atCost == true
+        ? p.shares * p.avgCost
+        : toEur(p.ticker, p.shares * (quotes[p.ticker]?.close ?? p.avgCost));
     if (v == null) return null;
     stats.add(PositionStat(
         ticker: p.ticker, valueEur: v, weightPct: v / total * 100));
@@ -183,6 +190,12 @@ PortfolioSummary summarize(
   double? cost = 0.0;
   var hasQuote = false;
   for (final p in positions) {
+    if (p.atCost == true) {
+      // 无行情资产：按欧元成本计价，不查行情、不折汇率
+      stockValue = stockValue! + p.shares * p.avgCost;
+      cost = cost! + p.shares * p.avgCost;
+      continue;
+    }
     final priceNative = quotes[p.ticker]?.close ?? p.avgCost;
     if (quotes.containsKey(p.ticker)) hasQuote = true;
     final v = toEur(p.ticker, p.shares * priceNative);

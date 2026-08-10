@@ -502,4 +502,13 @@ void main() {
           100);
     });
   });
+
+  test('setPosition 写入 atCost', () async {
+    final db = FakeFirebaseFirestore();
+    final repo = WealthRepo(db);
+    await repo.setPosition(
+        ticker: 'DEPOSITO2027', shares: 1, avgCost: 5000.0, atCost: true);
+    final doc = (await db.collection('positions').doc('DEPOSITO2027').get()).data()!;
+    expect(doc['atCost'], isTrue);
+  });
 }

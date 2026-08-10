@@ -41,7 +41,8 @@ class WatchItem {
 
 class Position {
   const Position({required this.ticker, required this.shares, required this.avgCost,
-      required this.updatedAt, this.openedAt, this.layer, this.holdToMaturity});
+      required this.updatedAt, this.openedAt, this.layer, this.holdToMaturity,
+      this.atCost});
   final String ticker;
   final double shares;
   final double avgCost;
@@ -52,6 +53,8 @@ class Position {
   final String? layer;
   /// 持有到期（BTP 之类）。影响 riskBase=liquid 的分母。
   final bool? holdToMaturity;
+  /// 无行情资产（存单等）：按欧元成本计价，runner 跳过行情/扫描。
+  final bool? atCost;
 
   factory Position.fromDoc(String id, Map<String, dynamic> d) => Position(
         ticker: _s(d['ticker'], id),
@@ -61,6 +64,7 @@ class Position {
         openedAt: d['openedAt'] as String?,
         layer: d['layer'] as String?,
         holdToMaturity: d['holdToMaturity'] as bool?,
+        atCost: d['atCost'] as bool?,
       );
 }
 

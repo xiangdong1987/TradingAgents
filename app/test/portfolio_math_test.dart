@@ -279,4 +279,42 @@ void main() {
       expect(r.netEur, r.totalEur);
     });
   });
+
+  group('.DE 与 atCost', () {
+    test('SAP.DE 按欧元计价，不再除汇率', () {
+      expect(isEurListing('SAP.DE'), isTrue);
+      expect(isItalianListing('SAP.DE'), isFalse);
+      expect(isItalianListing('ENEL.MI'), isTrue);
+      expect(isItalianListing('IT0005696320'), isTrue);
+      final s = summarize(
+        [Position(ticker: 'SAP.DE', shares: 10, avgCost: 90.0,
+            updatedAt: DateTime.utc(2026))],
+        const PortfolioMeta(cash: 0, currency: 'EUR'),
+        {'SAP.DE': const TickerQuote(close: 100.0, pctChange: 0),
+         'EURUSD=X': const TickerQuote(close: 1.25, pctChange: 0)},
+      );
+      expect(s.stockValueEur, 1000.0);        // 10×100，除了 1.25 就是 800（bug）
+    });
+
+    test('atCost 持仓无行情无汇率也能按欧元成本估值', () {
+      final s = summarize(
+        [Position(ticker: 'DEPOSITO2027', shares: 1, avgCost: 5000.0,
+            updatedAt: DateTime.utc(2026), atCost: true)],
+        const PortfolioMeta(cash: 100, currency: 'EUR'),
+        const {},                              // 无任何行情
+      );
+      expect(s.stockValueEur, 5000.0);
+      expect(s.totalEur, 5100.0);
+    });
+
+    test('concentration 对 atCost 用欧元成本', () {
+      final c = concentration(
+        [Position(ticker: 'DEPOSITO2027', shares: 1, avgCost: 5000.0,
+            updatedAt: DateTime.utc(2026), atCost: true)],
+        const PortfolioMeta(cash: 5000, currency: 'EUR'),
+        const {},
+      )!;
+      expect(c.stats.single.weightPct, 50.0);
+    });
+  });
 }

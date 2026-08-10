@@ -6,7 +6,7 @@
 /// 改动要两边一起改。
 library;
 
-import 'portfolio_math.dart' show isEurListing;
+import 'portfolio_math.dart' show isItalianListing;
 
 /// 美国按协定对分红的预扣税率。
 const taxPctUsWithholding = 15.0;
@@ -22,9 +22,9 @@ const taxPctUsTotal = 37.1;
 /// 卖出资本利得税率：意大利税务居民全球所得同一 26%。
 const taxPctCapitalGains = taxPctIt;
 
-/// 分红/利息的缺省税率：意大利标的 26%，其余（美股）37.1%。
+/// 分红/利息的缺省税率：意大利上市 26%，其余（美股、德股）37.1%。
 double defaultIncomeTaxPct(String ticker) =>
-    isEurListing(ticker) ? taxPctIt : taxPctUsTotal;
+    isItalianListing(ticker) ? taxPctIt : taxPctUsTotal;
 
 /// 卖出的缺省税额：只对**盈利**计税，亏损为 0（亏损用于抵扣是年度申报的事）。
 double defaultSellTax(double realizedPnl) =>

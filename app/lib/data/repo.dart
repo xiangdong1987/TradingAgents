@@ -198,7 +198,7 @@ class WealthRepo {
 
   Future<void> setPosition({
     required String ticker, required double shares, required double avgCost,
-    String? openedAt, String? layer, bool? holdToMaturity,
+    String? openedAt, String? layer, bool? holdToMaturity, bool? atCost,
   }) async {
     // merge 写：别把 runner/其他字段（如 openedAt）冲掉
     await _db.collection('positions').doc(ticker).set({
@@ -206,6 +206,7 @@ class WealthRepo {
       if ((openedAt ?? '').isNotEmpty) 'openedAt': openedAt!,
       if ((layer ?? '').isNotEmpty) 'layer': layer!,
       'holdToMaturity': ?holdToMaturity,
+      'atCost': ?atCost,
       'updatedAt': utcNowIso(),
     }, SetOptions(merge: true));
     // 持仓自动加入自选（已在自选里则不动，保留其 deepFreq 设置）。

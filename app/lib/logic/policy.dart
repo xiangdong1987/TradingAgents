@@ -91,12 +91,13 @@ class PolicyConfig {
   double singleCapFor(String layer) =>
       layer == layerSatellite ? maxSingleStockPct : maxSingleFundPct;
 
-  /// 分层判定与后端 `policy.layer_of` 同序：持仓字段 → layerMap → ISIN→防守 → 卫星。
+  /// 分层判定与后端 `policy.layer_of` 同序：持仓字段 → layerMap → atCost → ISIN→防守 → 卫星。
   String layerOf(String ticker, [Position? position]) {
     final own = position?.layer;
     if (own != null && allLayers.contains(own)) return own;
     final mapped = layerMap[ticker];
     if (mapped != null && allLayers.contains(mapped)) return mapped;
+    if (position?.atCost == true) return layerDefensive;
     return isIsin(ticker) ? layerDefensive : layerSatellite;
   }
 
@@ -165,12 +166,19 @@ LayerBreakdown? layerBreakdown(
   final byLayer = <String, double>{for (final l in allLayers) l: 0.0};
   var usdEur = 0.0;
   for (final p in positions) {
-    final price = quotes[p.ticker]?.close ?? p.avgCost;
-    final v = toEur(p.ticker, p.shares * price);
+    final double? v;
+    if (p.atCost == true) {
+      v = p.shares * p.avgCost;          // 欧元成本，atCost 不进美元敞口
+    } else {
+      final price = quotes[p.ticker]?.close ?? p.avgCost;
+      v = toEur(p.ticker, p.shares * price);
+    }
     if (v == null) return null;
     byLayer[config.layerOf(p.ticker, p)] =
         (byLayer[config.layerOf(p.ticker, p)] ?? 0) + v;
-    usdEur += v * config.usdPctOf(p.ticker) / 100;
+    if (p.atCost != true) {
+      usdEur += v * config.usdPctOf(p.ticker) / 100;
+    }
   }
 
   return LayerBreakdown(
