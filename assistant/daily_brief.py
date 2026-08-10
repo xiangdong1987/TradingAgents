@@ -83,6 +83,8 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
                 if "shortChangePct" in posi:
                     seg += f"（环比 {posi['shortChangePct']:+.1f}%）"
                 segs.append(seg)
+            elif "shortChangePct" in posi:
+                segs.insert(0, f"空头环比 {posi['shortChangePct']:+.1f}%")
             if "shortRatioDays" in posi:
                 segs.append(f"回补 {posi['shortRatioDays']} 天")
             pc_bits = []
@@ -92,7 +94,7 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
                 pc_bits.append(f"成交 {posi['pcVol']}")
             if pc_bits:
                 segs.append("期权P/C " + " / ".join(pc_bits))
-            posi_line = "多空: " + "，".join(segs)
+            posi_line = "多空: " + "，".join(segs) if segs else "多空: 无数据"
         else:
             posi_line = "多空: 无数据"
         tag = "（持仓）" if t in positions else "（自选）"

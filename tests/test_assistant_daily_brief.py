@@ -334,3 +334,27 @@ def test_brief_futures_block_placeholder_when_empty_or_raising():
                          fetch_money_flow=lambda t, d: None,
                          fetch_positioning=lambda t: None, fetch_futures=boom)
     assert "（期指数据缺失）" in llm.prompts[0]
+
+
+def test_brief_positioning_shortchangepct_alone_renders():
+    """当 shortPctFloat 缺席而 shortChangePct 存在时，独立渲染空头环比"""
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: {"shortChangePct": 8.0},
+                         fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    assert "多空: 空头环比 +8.0%" in prompt
+
+
+def test_brief_money_flow_and_positioning_coexist():
+    """资金流行与多空行应该同时出现在 prompt 里"""
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-01",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=_mf,
+                         fetch_positioning=_posi, fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    assert "资金流: 量比 1.80" in prompt
+    assert "多空: 空头占流通 1.4%（环比 +8.0%），回补 2.24 天，期权P/C 持仓 0.49 / 成交 0.5" in prompt

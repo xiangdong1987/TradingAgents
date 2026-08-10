@@ -57,7 +57,7 @@ def get_futures_snapshot(*, _fetch_quote=get_quote) -> list[dict]:
   `多空: 无数据`；单票 `fetch_positioning` 抛出同样降级该票）：
 
   ```
-  多空: 空头占流通 1.4%（环比 +8.1%），回补 2.2 天，期权P/C 持仓 0.49 / 成交 0.50
+  多空: 空头占流通 1.4%（环比 +8.1%），回补 2.24 天，期权P/C 持仓 0.49 / 成交 0.5
   ```
 
 - prompt 指示更新：
