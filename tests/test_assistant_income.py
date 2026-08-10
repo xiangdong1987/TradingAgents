@@ -182,3 +182,9 @@ def test_backfill_is_idempotent_and_respects_a_manual_zero():
     store.add_income({"id": "b", "ticker": "ENEL.MI", "date": "d2", "amount": 50.0})
     assert backfill_income_tax(store) == 1
     assert backfill_income_tax(store) == 0        # 再跑一次不重复改
+
+
+def test_german_dividend_defaults_to_us_style_tax():
+    from assistant.income import default_tax_pct, TAX_PCT_US_TOTAL, TAX_PCT_IT
+    assert default_tax_pct("SAP.DE") == TAX_PCT_US_TOTAL   # 37.1，非 26
+    assert default_tax_pct("ENEL.MI") == TAX_PCT_IT

@@ -295,10 +295,10 @@ def get_positioning(ticker: str, *, _ticker_factory=None) -> dict | None:
     """个股多空：做空数据（FINRA 双周频）+ 最近到期期权 put/call 比。
 
     键全部可选（数据源缺哪个就不写哪个），至少一键才返回 dict。美股以外
-    （ISIN、.MI 无此数据，省两次白调用）、五键全无、任何异常一律返回
+    （ISIN、.MI、.DE 无此数据，省两次白调用）、五键全无、任何异常一律返回
     None，绝不抛出。``_ticker_factory`` 供测试注入假 ``yf.Ticker``。
     """
-    if is_isin(ticker) or ticker.upper().endswith(".MI"):
+    if is_isin(ticker) or ticker.upper().endswith((".MI", ".DE")):
         return None
     try:
         if _ticker_factory is None:

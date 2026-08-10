@@ -241,3 +241,10 @@ def test_futures_snapshot_empty_when_all_fail():
     def boom(symbol):
         raise RuntimeError("nope")
     assert get_futures_snapshot(_fetch_quote=boom) == []
+
+
+def test_positioning_none_for_de_without_fetching():
+    from assistant.quotes import get_positioning
+    def boom(t):
+        raise AssertionError("德股不应该发请求")
+    assert get_positioning("SAP.DE", _ticker_factory=boom) is None

@@ -63,8 +63,9 @@ def merged(config: dict | None) -> dict:
 # ---------------------------------------------------------------------------
 
 def is_eur_listing(ticker: str) -> bool:
-    """.MI 上市与 IT 开头的 ISIN 按欧元计价（与 App 侧 isEurListing 同义）。"""
-    return ticker.endswith(".MI") or (ticker.startswith("IT") and is_isin(ticker))
+    """.MI/.DE 上市与 IT 开头的 ISIN 按欧元计价（与 App 侧 isEurListing 同义）。"""
+    return (ticker.endswith(".MI") or ticker.endswith(".DE")
+            or (ticker.startswith("IT") and is_isin(ticker)))
 
 
 def layer_of(ticker: str, position: dict | None, p: dict) -> str:
@@ -78,7 +79,9 @@ def layer_of(ticker: str, position: dict | None, p: dict) -> str:
     mapped = (p.get("layerMap") or {}).get(ticker)
     if mapped in LAYERS:
         return mapped
-    return "defensive" if is_isin(ticker) else "satellite"
+    if is_isin(ticker) or (position or {}).get("atCost"):
+        return "defensive"
+    return "satellite"
 
 
 def is_hold_to_maturity(ticker: str, position: dict | None, p: dict) -> bool:
@@ -169,6 +172,16 @@ def snapshot(positions: list[dict], cash: float, cash_currency: str,
         ticker = pos["ticker"]
         shares = float(pos.get("shares") or 0)
         if shares <= 0:
+            continue
+        if pos.get("atCost"):
+            # 无行情资产：按欧元成本计价（spec B2），不查行情、不折汇率
+            cost = float(pos.get("avgCost") or 0.0)
+            holdings.append(Holding(
+                ticker=ticker, shares=shares, price_native=cost,
+                value_eur=shares * cost,
+                layer=layer_of(ticker, pos, p), usd_pct=0.0,
+                hold_to_maturity=is_hold_to_maturity(ticker, pos, p),
+            ))
             continue
         price = (quotes.get(ticker) or {}).get("close") or pos.get("avgCost") or 0.0
         v = to_eur(ticker, shares * float(price))

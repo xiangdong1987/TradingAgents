@@ -215,3 +215,56 @@ def test_risk_shares_falls_back_to_default_stop():
     assert risk_shares(s, "ENEL.MI", 10.0, None) == 125
     # 止损高于入场（录错）同样走兜底
     assert risk_shares(s, "ENEL.MI", 10.0, 11.0) == 125
+
+
+# ---------- 德股（.DE）与 atCost ----------
+
+def test_de_listing_is_eur():
+    from assistant.policy import is_eur_listing
+    assert is_eur_listing("SAP.DE")
+    assert is_eur_listing("ENEL.MI")
+    assert not is_eur_listing("MSFT")
+
+
+def test_de_stock_valued_without_fx_division():
+    from assistant import policy
+    snap_result = policy.snapshot(
+        [{"ticker": "SAP.DE", "shares": 10, "avgCost": 150.0}],
+        1000.0, "EUR",
+        {"SAP.DE": {"close": 100.0}, "EURUSD=X": {"close": 1.25}},
+    )
+    h = snap_result.holdings[0]
+    assert h.value_eur == 1000.0          # 10×100 欧元，不该再除 1.25
+    assert h.usd_pct == 0.0               # 德股不是美元敞口
+
+
+def test_de_only_portfolio_needs_no_fx():
+    from assistant import policy
+    snap_result = policy.snapshot(
+        [{"ticker": "SAP.DE", "shares": 10, "avgCost": 150.0}],
+        1000.0, "EUR", {"SAP.DE": {"close": 100.0}},   # 无 EURUSD=X
+    )
+    assert snap_result is not None and snap_result.total_eur == 2000.0
+
+
+def test_at_cost_position_valued_at_eur_cost():
+    from assistant import policy
+    snap_result = policy.snapshot(
+        [{"ticker": "DEPOSITO2027", "shares": 1, "avgCost": 5000.0,
+          "atCost": True}],
+        0.0, "EUR", {},                                 # 无任何行情、无汇率
+    )
+    h = snap_result.holdings[0]
+    assert h.value_eur == 5000.0
+    assert h.usd_pct == 0.0
+    assert h.layer == "defensive"          # atCost 缺省归防守
+
+
+def test_at_cost_explicit_layer_wins():
+    from assistant import policy
+    snap_result = policy.snapshot(
+        [{"ticker": "DEPOSITO2027", "shares": 1, "avgCost": 5000.0,
+          "atCost": True, "layer": "core"}],
+        0.0, "EUR", {},
+    )
+    assert snap_result.holdings[0].layer == "core"
