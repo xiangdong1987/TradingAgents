@@ -138,13 +138,15 @@ void main() {
   group('.DE 与 atCost（policy）', () {
     test('atCost 缺省归防守层，显式 layer 优先', () {
       const cfg = PolicyConfig();
-      final atCost = Position(ticker: 'DEPOSITO2027', shares: 1,
+      // CASHDEP01 故意选一个不匹配 ISIN 正则（12 位）的种子，否则 ISIN 兜底
+      // 也会给出 defensive，测试就测不出 atCost 分支本身。
+      final atCost = Position(ticker: 'CASHDEP01', shares: 1,
           avgCost: 5000.0, updatedAt: DateTime.utc(2026), atCost: true);
-      expect(cfg.layerOf('DEPOSITO2027', atCost), layerDefensive);
-      final withLayer = Position(ticker: 'DEPOSITO2027', shares: 1,
+      expect(cfg.layerOf('CASHDEP01', atCost), layerDefensive);
+      final withLayer = Position(ticker: 'CASHDEP01', shares: 1,
           avgCost: 5000.0, updatedAt: DateTime.utc(2026), atCost: true,
           layer: 'core');
-      expect(cfg.layerOf('DEPOSITO2027', withLayer), layerCore);
+      expect(cfg.layerOf('CASHDEP01', withLayer), layerCore);
     });
 
     test('layerBreakdown：atCost 计防守、德股不进美元敞口', () {
@@ -152,7 +154,7 @@ void main() {
         [
           Position(ticker: 'SAP.DE', shares: 10, avgCost: 90.0,
               updatedAt: DateTime.utc(2026)),
-          Position(ticker: 'DEPOSITO2027', shares: 1, avgCost: 1000.0,
+          Position(ticker: 'CASHDEP01', shares: 1, avgCost: 1000.0,
               updatedAt: DateTime.utc(2026), atCost: true),
         ],
         const PortfolioMeta(cash: 0, currency: 'EUR'),

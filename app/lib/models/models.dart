@@ -69,7 +69,7 @@ class Position {
 }
 
 /// 一笔成交。`realizedPnl` 只有卖出才有，按卖出当时的持仓成本算，
-/// 单位是**标的计价货币**（US=USD、.MI=EUR）——汇总时才折 EUR。
+/// 单位是**标的计价货币**（US=USD、.MI/.DE=EUR）——汇总时才折 EUR。
 class Trade {
   const Trade({required this.id, required this.ticker, required this.side,
       required this.shares, required this.price, required this.date,
