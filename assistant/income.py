@@ -113,8 +113,8 @@ def sync_dividends(store, today: str, *, fetch_dividends=get_dividends,
     added = 0
     for pos in store.get_positions():
         ticker = pos["ticker"]
-        if is_isin(ticker):
-            continue  # 单券付息 Yahoo 无数据，靠 App 手工补录
+        if is_isin(ticker) or pos.get("atCost"):
+            continue  # 单券付息 Yahoo 无数据靠手工补录；atCost 无行情资产同理没有分红
         shares = float(pos.get("shares") or 0)
         if shares <= 0:
             continue

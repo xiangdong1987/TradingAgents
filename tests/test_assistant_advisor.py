@@ -134,6 +134,24 @@ def test_buy_without_cash_is_blocked_with_funding_candidates():
     assert "shares" not in meta          # 拦住时不给股数，避免照着下单
 
 
+def test_prefetch_skips_at_cost_positions():
+    store = eur_store(positions=[
+        {"ticker": "KO.MI", "shares": 10, "avgCost": 100.0},
+        {"ticker": "CASHACC", "shares": 1, "avgCost": 5000.0, "atCost": True},
+    ])
+    store.seed_policy_config(LOOSE)
+    calls = []
+
+    def fetch_quote(t, **kw):
+        calls.append(t)
+        px = 1.25 if t == "EURUSD=X" else 100.0
+        return {"ticker": t, "close": px, "prevClose": px, "pctChange": 0.0}
+
+    llm = FakeLLM('{"action": "sell", "targetWeightPct": 0, "rationale": "退出"}')
+    generate_suggestion(store, llm, "KO.MI", "SELL", "a1", fetch_quote=fetch_quote)
+    assert "CASHACC" not in calls          # 无行情资产，预拉行情不该碰它
+
+
 def test_sell_side_advice_is_not_gated():
     store = eur_store(cash=0.0,
                       positions=[{"ticker": "KO.MI", "shares": 10, "avgCost": 100.0}])

@@ -249,8 +249,10 @@ def test_de_only_portfolio_needs_no_fx():
 
 def test_at_cost_position_valued_at_eur_cost():
     from assistant import policy
+    # CASHDEP01 故意不匹配 ISIN 正则（12 位）——用 DEPOSITO2027 会连着 ISIN
+    # 兜底一起给出 defensive，测不出 atCost 分支本身。
     snap_result = policy.snapshot(
-        [{"ticker": "DEPOSITO2027", "shares": 1, "avgCost": 5000.0,
+        [{"ticker": "CASHDEP01", "shares": 1, "avgCost": 5000.0,
           "atCost": True}],
         0.0, "EUR", {},                                 # 无任何行情、无汇率
     )
@@ -263,7 +265,7 @@ def test_at_cost_position_valued_at_eur_cost():
 def test_at_cost_explicit_layer_wins():
     from assistant import policy
     snap_result = policy.snapshot(
-        [{"ticker": "DEPOSITO2027", "shares": 1, "avgCost": 5000.0,
+        [{"ticker": "CASHDEP01", "shares": 1, "avgCost": 5000.0,
           "atCost": True, "layer": "core"}],
         0.0, "EUR", {},
     )

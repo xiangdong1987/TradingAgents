@@ -43,14 +43,16 @@ def ticker_events(ticker: str, fetch_calendar=_default_fetch_calendar) -> list[d
 def refresh_calendar(store, *, fetch_calendar=_default_fetch_calendar) -> int:
     """Rebuild meta/calendar for the current watchlist ∪ positions.
 
-    Single-ticker failures are skipped; ISIN bonds have no Yahoo calendar.
-    Returns the number of events stored.
+    Single-ticker failures are skipped; ISIN bonds and atCost (no-quote)
+    positions have no Yahoo calendar. Returns the number of events stored.
     """
+    positions = store.get_positions()
     tickers = {w["ticker"] for w in store.get_watchlist()}
-    tickers |= {p["ticker"] for p in store.get_positions()}
+    tickers |= {p["ticker"] for p in positions}
+    at_cost = {p["ticker"] for p in positions if p.get("atCost")}
     events: list[dict] = []
     for t in sorted(tickers):
-        if is_isin(t):
+        if is_isin(t) or t in at_cost:
             continue
         try:
             events.extend(ticker_events(t, fetch_calendar))

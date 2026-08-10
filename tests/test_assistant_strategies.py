@@ -327,12 +327,15 @@ def test_run_scan_skips_at_cost_positions():
                             "updatedAt": "x", "atCost": True},
                        ])
     bars_calls = []
+    quote_calls = []
     def fetch_bars(t, today, days=200):
         bars_calls.append(t)
         return []
+    def fetch_quote(t):
+        quote_calls.append(t)
+        return {"ticker": t, "close": 1.0, "prevClose": 1.0, "pctChange": 0.0}
     run_scan(store, {"type": "strategy_scan", "strategy": "turtle"},
-             "2026-08-01", fetch_bars=fetch_bars,
-             fetch_quote=lambda t: {"ticker": t, "close": 1.0,
-                                    "prevClose": 1.0, "pctChange": 0.0})
+             "2026-08-01", fetch_bars=fetch_bars, fetch_quote=fetch_quote)
     assert "CASHACC" not in bars_calls
+    assert "CASHACC" not in quote_calls    # 无行情资产，_quotes_map 也不该拉它
 

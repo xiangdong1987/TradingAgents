@@ -91,6 +91,8 @@ def generate_suggestion(store, llm, ticker: str, decision: str, analysis_id: str
         return close
 
     for t, p in positions.items():
+        if p.get("atCost"):
+            continue    # 无行情资产，policy.snapshot 直接按成本计价，不用拉行情
         price_of(t, p.get("avgCost", 0.0))
     price = price_of(ticker, pos.get("avgCost", 0.0) if pos else 0.0)
     try:

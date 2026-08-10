@@ -44,6 +44,8 @@ def _quotes_map(positions: dict[str, dict], fetch_quote) -> dict:
     """取一遍行情（含 EURUSD=X），失败的标的退回成本价。Policy 快照要用。"""
     quotes: dict[str, dict] = {}
     for ticker, pos in positions.items():
+        if pos.get("atCost"):
+            continue    # 无行情资产，policy.snapshot 直接按成本计价，不用拉行情
         try:
             quotes[ticker] = {"close": fetch_quote(ticker)["close"]}
         except Exception:

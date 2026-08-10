@@ -42,5 +42,22 @@ def test_refresh_calendar_covers_watch_and_positions_skips_isin_and_failures():
     assert dates == sorted(dates)                       # 按日期排序
 
 
+def test_refresh_calendar_skips_at_cost_positions():
+    s = MemoryStore()
+    s.seed_positions([
+        {"ticker": "ENEL.MI", "shares": 1, "avgCost": 9.0, "updatedAt": "x"},
+        {"ticker": "CASHACC", "shares": 1, "avgCost": 5000.0, "updatedAt": "x",
+         "atCost": True},
+    ])
+    calls = []
+
+    def fetch_calendar(ticker):
+        calls.append(ticker)
+        return fake_calendar(ticker)
+
+    refresh_calendar(s, fetch_calendar=fetch_calendar)
+    assert "CASHACC" not in calls          # 无行情资产，不去问 Yahoo 日历
+
+
 def test_empty_calendar_fields_yield_no_events():
     assert ticker_events("X", lambda t: {}) == []

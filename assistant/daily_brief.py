@@ -201,7 +201,8 @@ def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
 
 def _add_fx_if_needed(quotes_map: dict, tickers, fetch_quote) -> None:
     """Always ship the EURUSD rate: the client displays US listings in USD,
-    Borsa Italiana (``.MI``) in EUR, and converts portfolio TOTALS to EUR."""
+    Borsa Italiana (``.MI``) and Xetra (``.DE``) listings in EUR, and
+    converts portfolio TOTALS to EUR."""
     if "EURUSD=X" in quotes_map:
         return
     try:

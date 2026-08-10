@@ -54,6 +54,21 @@ def test_isin_positions_are_skipped():
     assert calls == []                     # 单券不去问 Yahoo，等手工补录
 
 
+def test_at_cost_positions_are_skipped():
+    store = make_store([
+        {"ticker": "CASHACC", "shares": 1, "avgCost": 5000.0, "updatedAt": "x",
+         "atCost": True},
+    ])
+    calls = []
+
+    def fetch(t, a, b):
+        calls.append(t)
+        return [("2026-07-15", 100.0)]
+
+    assert sync_dividends(store, "2026-08-03", fetch_dividends=fetch) == 0
+    assert calls == []                     # 无行情资产，不去问 Yahoo
+
+
 def test_zero_share_positions_are_skipped():
     store = make_store([{"ticker": "KO", "shares": 0, "avgCost": 80.0, "updatedAt": "x"}])
     assert sync_dividends(store, "2026-08-03",
