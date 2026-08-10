@@ -153,3 +153,91 @@ def test_money_flow_none_on_dirty_zero_close():
     closes[15] = 0.0  # bars[-6] 对应 index 15（倒数第6个）
     volumes = [100.0] * 21
     assert get_money_flow("NVDA", "2026-08-01", _history=lambda t, s, e: _mf_bars(closes, volumes)) is None
+
+
+# ---------- get_positioning / get_futures_snapshot ----------
+
+class _FakeChain:
+    def __init__(self, calls_oi, puts_oi, calls_vol, puts_vol):
+        import pandas as pd
+        self.calls = pd.DataFrame({"openInterest": calls_oi, "volume": calls_vol})
+        self.puts = pd.DataFrame({"openInterest": puts_oi, "volume": puts_vol})
+
+
+class _FakeYfTicker:
+    def __init__(self, info=None, expiries=(), chain=None):
+        self.info = info or {}
+        self.options = expiries
+        self._chain = chain
+
+    def option_chain(self, expiry):
+        if self._chain is None:
+            raise RuntimeError("no chain")
+        return self._chain
+
+
+def test_positioning_full_data_hand_computed():
+    from assistant.quotes import get_positioning
+    fake = _FakeYfTicker(
+        info={"shortPercentOfFloat": 0.0139, "sharesShort": 108,
+              "sharesShortPriorMonth": 100, "shortRatio": 2.24},
+        expiries=("2026-08-08",),
+        chain=_FakeChain(calls_oi=[100, 100], puts_oi=[49, 49],
+                         calls_vol=[10, 10], puts_vol=[5, 5]),
+    )
+    p = get_positioning("NVDA", _ticker_factory=lambda t: fake)
+    assert p == {"shortPctFloat": 1.39, "shortChangePct": 8.0,
+                 "shortRatioDays": 2.24, "pcOi": 0.49, "pcVol": 0.5}
+
+
+def test_positioning_partial_data_keeps_available_keys():
+    from assistant.quotes import get_positioning
+    fake = _FakeYfTicker(info={"shortRatio": 3.5})     # 无期权链、无占比/环比
+    p = get_positioning("SPCX", _ticker_factory=lambda t: fake)
+    assert p == {"shortRatioDays": 3.5}
+
+
+def test_positioning_chain_failure_keeps_short_keys():
+    from assistant.quotes import get_positioning
+    fake = _FakeYfTicker(info={"shortRatio": 3.5}, expiries=("2026-08-08",),
+                         chain=None)                   # option_chain 会抛
+    p = get_positioning("VST", _ticker_factory=lambda t: fake)
+    assert p == {"shortRatioDays": 3.5}
+
+
+def test_positioning_none_when_no_data_at_all():
+    from assistant.quotes import get_positioning
+    assert get_positioning("KO", _ticker_factory=lambda t: _FakeYfTicker()) is None
+
+
+def test_positioning_none_for_mi_and_isin_without_fetching():
+    from assistant.quotes import get_positioning
+    def boom(t):
+        raise AssertionError("非美股不应该发请求")
+    assert get_positioning("ENEL.MI", _ticker_factory=boom) is None
+    assert get_positioning("IT0005696320", _ticker_factory=boom) is None
+
+
+def test_positioning_none_on_error():
+    from assistant.quotes import get_positioning
+    def boom(t):
+        raise RuntimeError("network down")
+    assert get_positioning("NVDA", _ticker_factory=boom) is None
+
+
+def test_futures_snapshot_skips_failures():
+    from assistant.quotes import get_futures_snapshot
+    def flaky(symbol):
+        if symbol == "NQ=F":
+            raise RuntimeError("nope")
+        return {"ticker": symbol, "close": 7779.75, "prevClose": 7755.0,
+                "pctChange": 0.31}
+    out = get_futures_snapshot(_fetch_quote=flaky)
+    assert out == [{"name": "标普500期指", "close": 7779.75, "pctChange": 0.31}]
+
+
+def test_futures_snapshot_empty_when_all_fail():
+    from assistant.quotes import get_futures_snapshot
+    def boom(symbol):
+        raise RuntimeError("nope")
+    assert get_futures_snapshot(_fetch_quote=boom) == []

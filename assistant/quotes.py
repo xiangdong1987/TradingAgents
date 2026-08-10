@@ -286,3 +286,62 @@ def get_money_flow(ticker: str, end_date: str, *,
         }
     except Exception:
         return None
+
+
+_FUTURES = (("ES=F", "标普500期指"), ("NQ=F", "纳指100期指"))
+
+
+def get_positioning(ticker: str, *, _ticker_factory=None) -> dict | None:
+    """个股多空：做空数据（FINRA 双周频）+ 最近到期期权 put/call 比。
+
+    键全部可选（数据源缺哪个就不写哪个），至少一键才返回 dict。美股以外
+    （ISIN、.MI 无此数据，省两次白调用）、五键全无、任何异常一律返回
+    None，绝不抛出。``_ticker_factory`` 供测试注入假 ``yf.Ticker``。
+    """
+    if is_isin(ticker) or ticker.upper().endswith(".MI"):
+        return None
+    try:
+        if _ticker_factory is None:
+            import yfinance as yf
+            _ticker_factory = yf.Ticker
+        tk = _ticker_factory(ticker)
+        out: dict = {}
+        info = tk.info or {}
+        spf = info.get("shortPercentOfFloat")
+        if spf:
+            out["shortPctFloat"] = round(spf * 100, 2)
+        cur, prior = info.get("sharesShort"), info.get("sharesShortPriorMonth")
+        if cur and prior:
+            out["shortChangePct"] = round((cur - prior) / prior * 100, 2)
+        if info.get("shortRatio"):
+            out["shortRatioDays"] = round(info["shortRatio"], 2)
+        try:
+            expiries = tk.options
+            if expiries:
+                chain = tk.option_chain(expiries[0])
+                call_oi = float(chain.calls["openInterest"].sum())
+                put_oi = float(chain.puts["openInterest"].sum())
+                if call_oi > 0:
+                    out["pcOi"] = round(put_oi / call_oi, 2)
+                call_vol = float(chain.calls["volume"].sum())
+                put_vol = float(chain.puts["volume"].sum())
+                if call_vol > 0:
+                    out["pcVol"] = round(put_vol / call_vol, 2)
+        except Exception:
+            pass  # 期权链失败不拖累做空数据
+        return out or None
+    except Exception:
+        return None
+
+
+def get_futures_snapshot(*, _fetch_quote=get_quote) -> list[dict]:
+    """股指期货快照（ES/NQ）。单条失败跳过，全失败返回 []，绝不抛出。"""
+    out = []
+    for symbol, name in _FUTURES:
+        try:
+            q = _fetch_quote(symbol)
+            out.append({"name": name, "close": q["close"],
+                        "pctChange": q["pctChange"]})
+        except Exception:
+            continue
+    return out
