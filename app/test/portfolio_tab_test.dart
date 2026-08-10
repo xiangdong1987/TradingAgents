@@ -564,4 +564,44 @@ void main() {
       expect(pos['holdToMaturity'], isTrue);
     });
   });
+
+  group('atCost 开关', () {
+    Future<FakeFirebaseFirestore> seedAtCost() async {
+      final db = FakeFirebaseFirestore();
+      await db.collection('positions').doc('DEPOSITO2027').set({
+        'ticker': 'DEPOSITO2027', 'shares': 1, 'avgCost': 5000.0,
+        'updatedAt': '2026-08-01T00:00:00+00:00', 'atCost': true,
+      });
+      await db.collection('meta').doc('portfolio').set(
+          {'cash': 1000.0, 'currency': 'EUR'});
+      return db;
+    }
+
+    testWidgets('atCost 持仓行显示「按成本计」', (tester) async {
+      final db = await seedAtCost();
+      await _pump(tester, db);
+      expect(find.text('按成本计'), findsOneWidget);
+      expect(find.text('无行情'), findsNothing);
+    });
+
+    testWidgets('编辑框开关写入 atCost', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await db.collection('positions').doc('DEPOSITO2027').set({
+        'ticker': 'DEPOSITO2027', 'shares': 1, 'avgCost': 5000.0,
+        'updatedAt': '2026-08-01T00:00:00+00:00',
+      });
+      await db.collection('meta').doc('portfolio').set(
+          {'cash': 1000.0, 'currency': 'EUR'});
+      await _pump(tester, db);
+      await tester.tap(find.text('DEPOSITO2027'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('posAtCost')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('posSave')));
+      await tester.pumpAndSettle();
+      final doc = (await db.collection('positions')
+          .doc('DEPOSITO2027').get()).data()!;
+      expect(doc['atCost'], isTrue);
+    });
+  });
 }

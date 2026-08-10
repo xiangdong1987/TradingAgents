@@ -191,6 +191,7 @@ class PortfolioTab extends ConsumerWidget {
   }
 
   Widget _positionTrailing(L10n t, Position p, TickerQuote? q) {
+    if (p.atCost == true) return Text(t.atCost);
     if (q == null) {
       // 无行情源的 ISIN 资产（存单/未上市品种）按成本计入总值
       return Text(isIsin(p.ticker) ? t.atCost : t.noPrice);
@@ -519,6 +520,7 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
   // 分层与持有到期：为空时用 Policy 的推断值当初值，用户改了才写进文档
   String? _layer;
   bool? _htm;
+  bool? _atCost;
 
   @override
   void dispose() {
@@ -538,7 +540,7 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
     }
     await ref.read(repoProvider).setPosition(
         ticker: ticker, shares: shares, avgCost: avgCost,
-        openedAt: _openedAt.text.trim(), layer: _layer, holdToMaturity: _htm);
+        openedAt: _openedAt.text.trim(), layer: _layer, holdToMaturity: _htm, atCost: _atCost);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -632,6 +634,13 @@ class _PositionDialogState extends ConsumerState<_PositionDialog> {
               title: Text(t.holdToMaturity, style: const TextStyle(fontSize: 14)),
               value: _htm ?? inferredHtm,
               onChanged: (v) => setState(() => _htm = v),
+            ),
+            SwitchListTile(
+              key: const Key('posAtCost'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(t.atCostToggle, style: const TextStyle(fontSize: 14)),
+              value: _atCost ?? (widget.existing?.atCost ?? false),
+              onChanged: (v) => setState(() => _atCost = v),
             ),
             // 买入/卖出会另开一个流水框，跟保存/取消不是一类动作；放进表单里
             // 一行两个——五个按钮挤在 actions 里会竖排，把保存推到最下面。

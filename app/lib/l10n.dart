@@ -130,6 +130,8 @@ class L10n {
   String get usdExposure => isZh ? '美元敞口' : 'USD exposure';
   String capLabel(String pct) => isZh ? '上限 $pct%' : 'cap $pct%';
   String get holdToMaturity => isZh ? '持有到期' : 'Hold to maturity';
+  String get atCostToggle =>
+      isZh ? '无行情资产（按欧元成本计价）' : 'No-quote asset (at EUR cost)';
   String get layerField => isZh ? '分层' : 'Layer';
 
   // ---- 自选 tab ----
