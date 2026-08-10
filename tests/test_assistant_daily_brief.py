@@ -358,3 +358,52 @@ def test_brief_money_flow_and_positioning_coexist():
     prompt = llm.prompts[0]
     assert "资金流: 量比 1.80" in prompt
     assert "多空: 空头占流通 1.4%（环比 +8.0%），回补 2.24 天，期权P/C 持仓 0.49 / 成交 0.5" in prompt
+
+
+def test_brief_at_cost_position_skips_all_fetches():
+    calls = {"quote": [], "news": [], "mf": [], "posi": []}
+    store, llm = make_store(), FakeLLM()
+    store.seed_positions([
+        {"ticker": "AAPL", "shares": 10, "avgCost": 100.0, "updatedAt": "x"},
+        {"ticker": "DEPOSITO2027", "shares": 1, "avgCost": 5000.0,
+         "updatedAt": "x", "atCost": True},
+    ])
+    def rec(bucket, ret):
+        def f(t, *a, **kw):
+            calls[bucket].append(t)
+            return ret
+        return f
+    generate_daily_brief(
+        store, llm, "2026-08-01",
+        fetch_quote=rec("quote", {"ticker": "AAPL", "close": 110.0,
+                                  "prevClose": 100.0, "pctChange": 10.0}),
+        fetch_news=rec("news", "n"),
+        fetch_money_flow=rec("mf", None),
+        fetch_positioning=rec("posi", None),
+        fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    assert "## DEPOSITO2027（持仓）\n按成本计价资产（无行情）" in prompt
+    assert "DEPOSITO2027: 1 股 @ 成本 5000.0，按成本计" in prompt
+    for bucket in calls.values():
+        assert "DEPOSITO2027" not in bucket        # 四类 fetch 全部没碰它
+    saved = store.get_brief("2026-08-01")
+    assert "DEPOSITO2027" in saved["tickers"]      # 照常计入 tickers
+
+
+def test_top_up_skips_at_cost_ticker():
+    from assistant.daily_brief import top_up_quotes
+
+    store = make_store()
+    store.seed_positions([
+        {"ticker": "DEPOSITO2027", "shares": 1, "avgCost": 5000.0,
+         "updatedAt": "x", "atCost": True},
+    ])
+    store.save_brief("2026-08-01", {
+        "date": "2026-08-01", "markdownZh": "x", "tickers": [],
+        "createdAt": "2026-08-01T00:00:00+00:00", "quotes": {}})
+    fetched = []
+    def q(t):
+        fetched.append(t)
+        return {"ticker": t, "close": 1.0, "prevClose": 1.0, "pctChange": 0.0}
+    top_up_quotes(store, "2026-08-01", fetch_quote=q)
+    assert "DEPOSITO2027" not in fetched

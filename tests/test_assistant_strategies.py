@@ -319,3 +319,20 @@ def test_gates_skipped_without_fx_but_signals_still_fire():
     assert doc["action"] == "buy"
     assert "blocked" not in doc["meta"] and "clampedBy" not in doc["meta"]
 
+
+def test_run_scan_skips_at_cost_positions():
+    store = make_store(watch=(), cfg={"turtle": {"enabled": True}},
+                       positions=[
+                           {"ticker": "DEPOSITO2027", "shares": 1, "avgCost": 5000.0,
+                            "updatedAt": "x", "atCost": True},
+                       ])
+    bars_calls = []
+    def fetch_bars(t, today, days=200):
+        bars_calls.append(t)
+        return []
+    run_scan(store, {"type": "strategy_scan", "strategy": "turtle"},
+             "2026-08-01", fetch_bars=fetch_bars,
+             fetch_quote=lambda t: {"ticker": t, "close": 1.0,
+                                    "prevClose": 1.0, "pctChange": 0.0})
+    assert "DEPOSITO2027" not in bars_calls
+

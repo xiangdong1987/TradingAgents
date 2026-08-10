@@ -129,6 +129,8 @@ def run_scan(store, job: dict, today: str, *,
         bars_cache: dict[str, list[dict]] = {}
 
         for ticker in _tickers_for(scope, positions, watch):
+            if (positions.get(ticker) or {}).get("atCost"):
+                continue    # 无行情资产，扫描无意义
             if ticker not in bars_cache:
                 try:
                     bars_cache[ticker] = fetch_bars(ticker, today, days=BARS_CALENDAR_DAYS)

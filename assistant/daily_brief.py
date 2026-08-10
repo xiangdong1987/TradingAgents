@@ -49,6 +49,13 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
     ticker_parts, position_parts = [], []
     quotes_map: dict = {}
     for t in tickers:
+        pos = positions.get(t)
+        if pos and pos.get("atCost"):
+            # 无行情资产：按欧元成本计价，行情/新闻/资金流/多空全部不拉
+            ticker_parts.append(f"## {t}（持仓）\n按成本计价资产（无行情）")
+            position_parts.append(
+                f"- {t}: {pos['shares']} 股 @ 成本 {pos['avgCost']}，按成本计")
+            continue
         try:
             q = fetch_quote(t)
             quote_line = f"收盘 {q['close']}，涨跌 {q['pctChange']}%"
@@ -97,11 +104,10 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
             posi_line = "多空: " + "，".join(segs) if segs else "多空: 无数据"
         else:
             posi_line = "多空: 无数据"
-        tag = "（持仓）" if t in positions else "（自选）"
+        tag = "（持仓）" if pos else "（自选）"
         ticker_parts.append(
             f"## {t}{tag}\n{quote_line}\n{mf_line}\n{posi_line}\n近日新闻:\n{news}")
 
-        pos = positions.get(t)
         if pos:
             if q:
                 if pos["avgCost"] and pos["avgCost"] > 0:
@@ -158,8 +164,12 @@ def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
     back up to ``lookback_days`` for the latest brief doc (weekends). Returns
     the number of tickers added.
     """
+    at_cost: set[str] = set()
     tickers = {w["ticker"] for w in store.get_watchlist()}
-    tickers |= {p["ticker"] for p in store.get_positions()}
+    for p in store.get_positions():
+        tickers.add(p["ticker"])
+        if p.get("atCost"):
+            at_cost.add(p["ticker"])
     if not tickers:
         return 0
 
@@ -176,7 +186,7 @@ def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
 
     existing = {} if force else (brief.get("quotes") or {})
     added = {}
-    for t in sorted(tickers - set(existing)):
+    for t in sorted(tickers - set(existing) - at_cost):
         try:
             q = fetch_quote(t)
         except Exception:
