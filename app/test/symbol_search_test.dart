@@ -73,4 +73,19 @@ void main() {
     expect(controller.text, 'AAPL');
     controller.dispose();
   });
+
+  group('德股（Xetra）条目', () {
+    test('宝马中文别名与代码都能搜到', () {
+      expect(index.search('宝马').first.symbol, 'BMW.DE');
+      expect(index.search('BMW.DE').first.symbol, 'BMW.DE');
+      expect(index.search('BMW').first.symbol, 'BMW.DE');   // 前缀即命中
+    });
+
+    test('常用德股别名可搜', () {
+      expect(index.search('西门子').first.symbol, 'SIE.DE');
+      expect(index.search('大众').first.symbol, 'VOW3.DE');
+      expect(index.search('奔驰').first.symbol, 'MBG.DE');
+      expect(index.search('SAP.DE').first.symbol, 'SAP.DE');
+    });
+  });
 }

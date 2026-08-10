@@ -1,8 +1,9 @@
 // app/lib/data/symbol_search.dart
-/// Offline US ticker search backing the add-watch / add-position
+/// Offline ticker search backing the add-watch / add-position
 /// autocomplete. The index is a bundled NASDAQ symbol directory
-/// (assets/us_symbols.csv, `SYMBOL,Name` per line) plus a curated map of
-/// Chinese aliases for well-known tickers, so "苹果" finds AAPL.
+/// (assets/us_symbols.csv, `SYMBOL,Name` per line) plus curated Milan
+/// (.MI) and Xetra (.DE) lists with Chinese aliases, so "苹果" finds
+/// AAPL and "宝马" finds BMW.DE.
 library;
 
 import 'package:flutter/services.dart' show rootBundle;
@@ -137,6 +138,52 @@ const List<SymbolEntry> milanEntries = [
   SymbolEntry(symbol: 'IBGM.MI', name: 'iShares Euro Govt Bond 7-10yr UCITS ETF', alias: '欧元区国债 7-10年'),
 ];
 
+
+/// 法兰克福/Xetra（Yahoo `.DE` 后缀）常用标的：DAX 40 成分股。
+/// 与 milanEntries 同一套路——离线索引只覆盖高频标的，搜不到永远可以直接输代码。
+const List<SymbolEntry> germanEntries = [
+  SymbolEntry(symbol: 'ADS.DE', name: 'Adidas AG', alias: '阿迪达斯'),
+  SymbolEntry(symbol: 'AIR.DE', name: 'Airbus SE', alias: '空客 空中客车'),
+  SymbolEntry(symbol: 'ALV.DE', name: 'Allianz SE', alias: '安联保险'),
+  SymbolEntry(symbol: 'BAS.DE', name: 'BASF SE', alias: '巴斯夫'),
+  SymbolEntry(symbol: 'BAYN.DE', name: 'Bayer AG', alias: '拜耳'),
+  SymbolEntry(symbol: 'BEI.DE', name: 'Beiersdorf AG', alias: '拜尔斯道夫 妮维雅'),
+  SymbolEntry(symbol: 'BMW.DE', name: 'Bayerische Motoren Werke AG', alias: '宝马'),
+  SymbolEntry(symbol: 'BNR.DE', name: 'Brenntag SE'),
+  SymbolEntry(symbol: 'CBK.DE', name: 'Commerzbank AG', alias: '德国商业银行'),
+  SymbolEntry(symbol: 'CON.DE', name: 'Continental AG', alias: '大陆集团 马牌'),
+  SymbolEntry(symbol: '1COV.DE', name: 'Covestro AG', alias: '科思创'),
+  SymbolEntry(symbol: 'DTG.DE', name: 'Daimler Truck Holding AG', alias: '戴姆勒卡车'),
+  SymbolEntry(symbol: 'DBK.DE', name: 'Deutsche Bank AG', alias: '德意志银行'),
+  SymbolEntry(symbol: 'DB1.DE', name: 'Deutsche Boerse AG', alias: '德意志交易所'),
+  SymbolEntry(symbol: 'DHL.DE', name: 'DHL Group', alias: '德国邮政 敦豪'),
+  SymbolEntry(symbol: 'DTE.DE', name: 'Deutsche Telekom AG', alias: '德国电信'),
+  SymbolEntry(symbol: 'EOAN.DE', name: 'E.ON SE', alias: '意昂电力'),
+  SymbolEntry(symbol: 'FRE.DE', name: 'Fresenius SE', alias: '费森尤斯'),
+  SymbolEntry(symbol: 'HNR1.DE', name: 'Hannover Rueck SE', alias: '汉诺威再保险'),
+  SymbolEntry(symbol: 'HEI.DE', name: 'Heidelberg Materials AG', alias: '海德堡材料'),
+  SymbolEntry(symbol: 'HEN3.DE', name: 'Henkel AG (Vz)', alias: '汉高'),
+  SymbolEntry(symbol: 'IFX.DE', name: 'Infineon Technologies AG', alias: '英飞凌'),
+  SymbolEntry(symbol: 'MBG.DE', name: 'Mercedes-Benz Group AG', alias: '奔驰 梅赛德斯'),
+  SymbolEntry(symbol: 'MRK.DE', name: 'Merck KGaA', alias: '德国默克'),
+  SymbolEntry(symbol: 'MTX.DE', name: 'MTU Aero Engines AG'),
+  SymbolEntry(symbol: 'MUV2.DE', name: 'Muenchener Rueck AG', alias: '慕尼黑再保险'),
+  SymbolEntry(symbol: 'PAH3.DE', name: 'Porsche Automobil Holding SE', alias: '保时捷控股'),
+  SymbolEntry(symbol: 'P911.DE', name: 'Dr. Ing. h.c. F. Porsche AG', alias: '保时捷'),
+  SymbolEntry(symbol: 'QIA.DE', name: 'Qiagen N.V.', alias: '凯杰生物'),
+  SymbolEntry(symbol: 'RHM.DE', name: 'Rheinmetall AG', alias: '莱茵金属'),
+  SymbolEntry(symbol: 'RWE.DE', name: 'RWE AG', alias: '莱茵集团'),
+  SymbolEntry(symbol: 'SAP.DE', name: 'SAP SE', alias: '思爱普'),
+  SymbolEntry(symbol: 'SRT3.DE', name: 'Sartorius AG (Vz)', alias: '赛多利斯'),
+  SymbolEntry(symbol: 'SIE.DE', name: 'Siemens AG', alias: '西门子'),
+  SymbolEntry(symbol: 'ENR.DE', name: 'Siemens Energy AG', alias: '西门子能源'),
+  SymbolEntry(symbol: 'SHL.DE', name: 'Siemens Healthineers AG', alias: '西门子医疗'),
+  SymbolEntry(symbol: 'SY1.DE', name: 'Symrise AG', alias: '德之馨'),
+  SymbolEntry(symbol: 'VOW3.DE', name: 'Volkswagen AG (Vz)', alias: '大众汽车'),
+  SymbolEntry(symbol: 'VNA.DE', name: 'Vonovia SE'),
+  SymbolEntry(symbol: 'ZAL.DE', name: 'Zalando SE', alias: '扎兰多'),
+];
+
 class SymbolIndex {
   SymbolIndex(this._entries);
 
@@ -167,6 +214,7 @@ class SymbolIndex {
           symbol: symbol, name: name, alias: zhAliases[symbol] ?? ''));
     }
     entries.addAll(milanEntries);
+    entries.addAll(germanEntries);
     return SymbolIndex(entries);
   }
 
