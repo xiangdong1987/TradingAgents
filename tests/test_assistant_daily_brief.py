@@ -154,13 +154,15 @@ def test_brief_always_includes_eurusd_rate():
     store.seed_watchlist([{"ticker": "ENEL.MI", "deepFreq": "manual", "note": "", "addedAt": "x"}])
     generate_daily_brief(store, llm, "2026-08-01",
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
-                         fetch_money_flow=lambda t, d: None)
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     assert "EURUSD=X" in store.get_brief("2026-08-01")["quotes"]
 
     store2, llm2 = make_store(), FakeLLM()   # 纯美股也带汇率（总额按欧元计价）
     generate_daily_brief(store2, llm2, "2026-08-01",
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
-                         fetch_money_flow=lambda t, d: None)
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None, fetch_futures=lambda: [])
     assert "EURUSD=X" in store2.get_brief("2026-08-01")["quotes"]
 
 
