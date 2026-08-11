@@ -604,4 +604,83 @@ void main() {
       expect(doc['atCost'], isTrue);
     });
   });
+
+  group('国债买入', () {
+    Future<FakeFirebaseFirestore> seedCash() async {
+      final db = FakeFirebaseFirestore();
+      await db.collection('meta').doc('portfolio').set(
+          {'cash': 50000.0, 'currency': 'EUR'});
+      return db;
+    }
+
+    testWidgets('切到国债后按金额+票息保存', (tester) async {
+      final db = await seedCash();
+      await _pump(tester, db);
+      await tester.tap(find.byKey(const Key('addFab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('fabBuy')));
+      await tester.pumpAndSettle();
+      // 切国债：股数/价格消失，金额/票息字段出现
+      await tester.tap(find.descendant(
+          of: find.byKey(const Key('buyAssetType')),
+          matching: find.text('国债')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('buyShares')), findsNothing);
+      await tester.enterText(find.byKey(const Key('buyTicker')), 'btp2030');
+      await tester.enterText(find.byKey(const Key('buyAmount')), '45000');
+      await tester.enterText(find.byKey(const Key('buyCouponPct')), '4.0');
+      await tester.enterText(
+          find.byKey(const Key('buyMaturity')), '2030-03-15');
+      await tester.tap(find.byKey(const Key('buyConfirm')));
+      await tester.pumpAndSettle();
+
+      final pos = (await db.collection('positions').doc('BTP2030').get()).data()!;
+      expect(pos['assetType'], 'bond');
+      expect(pos['shares'], 1.0);
+      expect(pos['avgCost'], 45000.0);
+      expect(pos['atCost'], isTrue);
+      expect(pos['payFreq'], 'semiannual');            // 缺省半年付
+      final cash = (await db.collection('meta').doc('portfolio').get())
+          .data()!['cash'];
+      expect(cash, 5000.0);
+    });
+
+    testWidgets('到期日格式非法不保存', (tester) async {
+      final db = await seedCash();
+      await _pump(tester, db);
+      await tester.tap(find.byKey(const Key('addFab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('fabBuy')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+          of: find.byKey(const Key('buyAssetType')),
+          matching: find.text('国债')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('buyTicker')), 'BTP2030');
+      await tester.enterText(find.byKey(const Key('buyAmount')), '45000');
+      await tester.enterText(find.byKey(const Key('buyCouponPct')), '4.0');
+      await tester.enterText(find.byKey(const Key('buyMaturity')), '2030/3/15');
+      await tester.tap(find.byKey(const Key('buyConfirm')));
+      await tester.pumpAndSettle();
+      expect((await db.collection('positions').doc('BTP2030').get()).exists,
+          isFalse);
+    });
+
+    testWidgets('股票模式回归不变', (tester) async {
+      final db = await seedCash();
+      await _pump(tester, db);
+      await tester.tap(find.byKey(const Key('addFab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('fabBuy')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('buyTicker')), 'aapl');
+      await tester.enterText(find.byKey(const Key('buyShares')), '5');
+      await tester.enterText(find.byKey(const Key('buyPrice')), '100');
+      await tester.tap(find.byKey(const Key('buyConfirm')));
+      await tester.pumpAndSettle();
+      final pos = (await db.collection('positions').doc('AAPL').get()).data()!;
+      expect(pos['shares'], 5.0);
+      expect(pos.containsKey('assetType'), isFalse);
+    });
+  });
 }

@@ -216,6 +216,14 @@ class L10n {
   String get noTrades => isZh ? '还没有成交记录' : 'No trades yet';
   String get tradeRecorded => isZh ? '已记录成交' : 'Trade recorded';
   String get tradeDate => isZh ? '成交日期' : 'Trade date';
+  String get assetTypeStock => isZh ? '股票' : 'Stock';
+  String get assetTypeBond => isZh ? '国债' : 'Gov bond';
+  String get bondAmount => isZh ? '金额 €' : 'Amount €';
+  String get bondCouponPct => isZh ? '票面利率 %' : 'Coupon %';
+  String get bondPayFreq => isZh ? '付息频率' : 'Pay frequency';
+  String get payFreqAnnual => isZh ? '年付' : 'Annual';
+  String get payFreqSemiannual => isZh ? '半年付' : 'Semi-annual';
+  String get bondMaturity => isZh ? '到期日 (YYYY-MM-DD)' : 'Maturity (YYYY-MM-DD)';
   String get fromSuggestion => isZh ? '来自建议' : 'From suggestion';
   String deletePositionTitle(String ticker) =>
       isZh ? '删除 $ticker 持仓？' : 'Delete $ticker position?';

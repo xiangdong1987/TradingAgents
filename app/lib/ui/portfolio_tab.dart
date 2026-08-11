@@ -707,15 +707,23 @@ class _BuyDialogState extends ConsumerState<_BuyDialog> {
   final _ticker = TextEditingController();
   final _shares = TextEditingController();
   final _price = TextEditingController();
+  final _amount = TextEditingController();
+  final _couponPct = TextEditingController();
+  final _maturity = TextEditingController();
   late final _date = TextEditingController(
       text: DateTime.now().toIso8601String().substring(0, 10));
   var _prefilledPrice = false;
+  var _assetType = 'stock';
+  var _payFreq = 'semiannual';
 
   @override
   void dispose() {
     _ticker.dispose();
     _shares.dispose();
     _price.dispose();
+    _amount.dispose();
+    _couponPct.dispose();
+    _maturity.dispose();
     _date.dispose();
     super.dispose();
   }
@@ -723,20 +731,39 @@ class _BuyDialogState extends ConsumerState<_BuyDialog> {
   Future<void> _submit() async {
     final ticker =
         widget.position?.ticker ?? _ticker.text.trim().toUpperCase();
-    final shares = double.tryParse(_shares.text);
-    final price = double.tryParse(_price.text);
     final date = _date.text.trim();
-    if (ticker.isEmpty || shares == null || shares <= 0 || price == null ||
-        price <= 0 || date.isEmpty) {
-      return;
-    }
     final t = ref.read(l10nProvider);
-    await ref.read(repoProvider).applyTrade(
-        ticker: ticker, side: 'buy', shares: shares, price: price, date: date);
-    if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    Navigator.of(context).pop();
-    messenger.showSnackBar(SnackBar(content: Text(t.tradeRecorded)));
+
+    if (_assetType == 'bond') {
+      final amount = double.tryParse(_amount.text);
+      final coupon = double.tryParse(_couponPct.text);
+      final maturity = _maturity.text.trim();
+      final ok = RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(maturity);
+      if (ticker.isEmpty || amount == null || amount <= 0 ||
+          coupon == null || coupon <= 0 || !ok || date.isEmpty) {
+        return;
+      }
+      await ref.read(repoProvider).applyBondBuy(
+          ticker: ticker, amount: amount, couponPct: coupon,
+          payFreq: _payFreq, maturity: maturity, date: date);
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop();
+      messenger.showSnackBar(SnackBar(content: Text(t.tradeRecorded)));
+    } else {
+      final shares = double.tryParse(_shares.text);
+      final price = double.tryParse(_price.text);
+      if (ticker.isEmpty || shares == null || shares <= 0 || price == null ||
+          price <= 0 || date.isEmpty) {
+        return;
+      }
+      await ref.read(repoProvider).applyTrade(
+          ticker: ticker, side: 'buy', shares: shares, price: price, date: date);
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop();
+      messenger.showSnackBar(SnackBar(content: Text(t.tradeRecorded)));
+    }
   }
 
   @override
@@ -754,35 +781,80 @@ class _BuyDialogState extends ConsumerState<_BuyDialog> {
     final prefix = existing == null ? '' : ' (${currencyPrefix(existing.ticker)})';
     return AlertDialog(
       title: Text(existing == null ? t.buyTitleNew : t.buyTitle(existing.ticker)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (existing == null)
-            TickerField(fieldKey: const Key('buyTicker'), controller: _ticker)
-          else
-            Text(t.heldShares(_fmtPrefill(existing.shares)),
-                style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          TextField(
-            key: const Key('buyShares'),
-            controller: _shares,
-            decoration: InputDecoration(labelText: t.shares),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-          TextField(
-            key: const Key('buyPrice'),
-            controller: _price,
-            decoration: InputDecoration(labelText: '${t.priceLabel}$prefix'),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-          TextField(
-            key: const Key('buyDate'),
-            controller: _date,
-            decoration: InputDecoration(labelText: t.tradeDate),
-          ),
-        ],
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (existing == null) ...[
+              SegmentedButton<String>(
+                key: const Key('buyAssetType'),
+                style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact),
+                segments: [
+                  ButtonSegment(value: 'stock', label: Text(t.assetTypeStock)),
+                  ButtonSegment(value: 'bond', label: Text(t.assetTypeBond)),
+                ],
+                selected: {_assetType},
+                onSelectionChanged: (v) => setState(() => _assetType = v.first),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (existing == null)
+              TickerField(fieldKey: const Key('buyTicker'), controller: _ticker)
+            else
+              Text(t.heldShares(_fmtPrefill(existing.shares)),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            if (_assetType == 'stock') ...[
+              TextField(
+                key: const Key('buyShares'),
+                controller: _shares,
+                decoration: InputDecoration(labelText: t.shares),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              TextField(
+                key: const Key('buyPrice'),
+                controller: _price,
+                decoration: InputDecoration(labelText: '${t.priceLabel}$prefix'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ] else ...[
+              TextField(
+                key: const Key('buyAmount'),
+                controller: _amount,
+                decoration: InputDecoration(labelText: t.bondAmount),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              TextField(
+                key: const Key('buyCouponPct'),
+                controller: _couponPct,
+                decoration: InputDecoration(labelText: t.bondCouponPct),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              SegmentedButton<String>(
+                key: const Key('buyPayFreq'),
+                style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact),
+                segments: [
+                  ButtonSegment(value: 'annual', label: Text(t.payFreqAnnual)),
+                  ButtonSegment(value: 'semiannual', label: Text(t.payFreqSemiannual)),
+                ],
+                selected: {_payFreq},
+                onSelectionChanged: (v) => setState(() => _payFreq = v.first),
+              ),
+              TextField(
+                key: const Key('buyMaturity'),
+                controller: _maturity,
+                decoration: InputDecoration(labelText: t.bondMaturity),
+              ),
+            ],
+            TextField(
+              key: const Key('buyDate'),
+              controller: _date,
+              decoration: InputDecoration(labelText: t.tradeDate),
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
