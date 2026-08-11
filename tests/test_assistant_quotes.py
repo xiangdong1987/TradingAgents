@@ -210,10 +210,18 @@ def test_positioning_partial_data_keeps_available_keys():
 
 def test_positioning_chain_failure_keeps_short_keys():
     from assistant.quotes import get_positioning
-    fake = _FakeYfTicker(info={"shortRatio": 3.5, "regularMarketPrice": 100.0}, expiries=("2026-08-08",),
+    fake = _FakeYfTicker(info={"shortRatio": 3.5, "regularMarketPrice": 100.0}, expiries=("2026-08-21",),
                          chain=None)                   # option_chain 会抛
-    p = get_positioning("VST", _ticker_factory=lambda t: fake)
+    fake.call_count = 0
+    original_option_chain = fake.option_chain
+    def counting_option_chain(e):
+        fake.call_count += 1
+        return original_option_chain(e)
+    fake.option_chain = counting_option_chain
+
+    p = get_positioning("VST", _ticker_factory=lambda t: fake, _today="2026-08-11")
     assert p == {"shortRatioDays": 3.5}
+    assert fake.call_count == 1, f"option_chain should be called once, but was called {fake.call_count} times"
 
 
 def test_positioning_none_when_no_data_at_all():
