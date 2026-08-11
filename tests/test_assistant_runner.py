@@ -241,7 +241,9 @@ def test_bond_coupon_sync_on_trading_day():
     )
 
     # Verify that bond coupons were synced (income records created).
-    # Check the meta_doc to confirm sync ran.
-    meta = store.get_meta_doc("income_sync") if hasattr(store, "get_meta_doc") else None
-    assert meta is not None
-    assert meta.get("date") == WED.strftime("%Y-%m-%d")
+    # For maturity 2030-03-15, semiannual, opened 2026-01-01, today 2026-08-05:
+    # the coupon dates (floor, today] are: [2026-03-15]
+    income_records = [r for r in store.list_income() if r["ticker"] == "BTP2030"]
+    assert income_records, "Expected BTP2030 coupon income record to be created"
+    assert income_records[0]["date"] == "2026-03-15", f"Expected 2026-03-15, got {income_records[0].get('date')}"
+    assert income_records[0]["amount"] > 0, "Expected positive coupon amount"
