@@ -94,21 +94,31 @@ Concentration? concentration(
 /// 已实现盈亏合计（EUR）。每笔卖出的 `realizedPnl` 是标的原币，这里按
 /// **当前**汇率折算 USD 部分——历史汇率不追溯，和市值口径保持一致；
 /// 汇率缺失且存在 USD 标的时返回 null。
-double? realizedPnlEur(List<Trade> trades, Map<String, TickerQuote> quotes) =>
-    _sumEur(trades.map((t) => (t.ticker, t.realizedPnl)), quotes);
+///
+/// [eurTickers]：自定义名的欧元资产（如 atCost 国债 BTP2030）不匹配
+/// [isEurListing] 的 .MI/.DE/IT-ISIN 规则，靠调用方按持仓表传入 ticker
+/// 白名单强制按 EUR 原币计入，不折汇率。
+double? realizedPnlEur(List<Trade> trades, Map<String, TickerQuote> quotes,
+        {Set<String> eurTickers = const {}}) =>
+    _sumEur(trades.map((t) => (t.ticker, t.realizedPnl)), quotes,
+        eurTickers: eurTickers);
 
 /// 卖出记录里的资本利得税合计（EUR）。
-double? realizedTaxEur(List<Trade> trades, Map<String, TickerQuote> quotes) =>
-    _sumEur(trades.map((t) => (t.ticker, t.taxAmount)), quotes);
+double? realizedTaxEur(List<Trade> trades, Map<String, TickerQuote> quotes,
+        {Set<String> eurTickers = const {}}) =>
+    _sumEur(trades.map((t) => (t.ticker, t.taxAmount)), quotes,
+        eurTickers: eurTickers);
 
 /// 把 (标的, 原币金额) 序列按当前汇率折成 EUR 求和；null 金额跳过，
-/// 需要汇率却拿不到时整体返回 null。
-double? _sumEur(Iterable<(String, double?)> items, Map<String, TickerQuote> quotes) {
+/// 需要汇率却拿不到时整体返回 null。[eurTickers] 里的 ticker 强制按 EUR
+/// 原币计入（见 [realizedPnlEur] 注释）。
+double? _sumEur(Iterable<(String, double?)> items, Map<String, TickerQuote> quotes,
+    {Set<String> eurTickers = const {}}) {
   final rate = quotes['EURUSD=X']?.close;
   var sum = 0.0;
   for (final (ticker, value) in items) {
     if (value == null) continue;
-    if (isEurListing(ticker)) {
+    if (isEurListing(ticker) || eurTickers.contains(ticker)) {
       sum += value;
     } else {
       if (rate == null || rate == 0) return null;
@@ -120,12 +130,16 @@ double? _sumEur(Iterable<(String, double?)> items, Map<String, TickerQuote> quot
 
 /// 累计分红/利息合计（EUR）。口径与 [realizedPnlEur] 一致：原币金额按
 /// **当前**汇率折算，不追溯历史汇率。
-double? incomeEur(List<Income> incomes, Map<String, TickerQuote> quotes) =>
-    _sumEur(incomes.map((i) => (i.ticker, i.amount)), quotes);
+double? incomeEur(List<Income> incomes, Map<String, TickerQuote> quotes,
+        {Set<String> eurTickers = const {}}) =>
+    _sumEur(incomes.map((i) => (i.ticker, i.amount)), quotes,
+        eurTickers: eurTickers);
 
 /// 分红/利息的预扣税合计（EUR）。
-double? incomeTaxEur(List<Income> incomes, Map<String, TickerQuote> quotes) =>
-    _sumEur(incomes.map((i) => (i.ticker, i.taxAmount)), quotes);
+double? incomeTaxEur(List<Income> incomes, Map<String, TickerQuote> quotes,
+        {Set<String> eurTickers = const {}}) =>
+    _sumEur(incomes.map((i) => (i.ticker, i.taxAmount)), quotes,
+        eurTickers: eurTickers);
 
 /// 累计收益（简单加总口径）：浮动盈亏 + 已实现盈亏 + 累计分红利息。
 /// 收益率的分母是**当前持仓成本**——不是资金加权，也不年化，所以它回答的是
@@ -157,14 +171,15 @@ ReturnSummary? cumulativeReturn(
   PortfolioSummary summary,
   List<Trade> trades,
   List<Income> incomes,
-  Map<String, TickerQuote> quotes,
-) {
+  Map<String, TickerQuote> quotes, {
+  Set<String> eurTickers = const {},
+}) {
   final stock = summary.stockValueEur;
   final cost = summary.costEur;
-  final realized = realizedPnlEur(trades, quotes);
-  final income = incomeEur(incomes, quotes);
-  final realizedTax = realizedTaxEur(trades, quotes);
-  final incomeTax = incomeTaxEur(incomes, quotes);
+  final realized = realizedPnlEur(trades, quotes, eurTickers: eurTickers);
+  final income = incomeEur(incomes, quotes, eurTickers: eurTickers);
+  final realizedTax = realizedTaxEur(trades, quotes, eurTickers: eurTickers);
+  final incomeTax = incomeTaxEur(incomes, quotes, eurTickers: eurTickers);
   if (stock == null || cost == null || realized == null || income == null ||
       realizedTax == null || incomeTax == null) {
     return null;

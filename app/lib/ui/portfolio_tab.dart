@@ -26,7 +26,8 @@ class PortfolioTab extends ConsumerWidget {
     final summary = summarize(positions, meta, quotes);
     final trades = ref.watch(tradesProvider).value ?? const <Trade>[];
     final incomes = ref.watch(incomeProvider).value ?? const <Income>[];
-    final ret = cumulativeReturn(summary, trades, incomes, quotes);
+    final ret = cumulativeReturn(summary, trades, incomes, quotes,
+        eurTickers: {for (final p in positions) if (p.atCost == true) p.ticker});
     final conc = concentration(positions, meta, quotes);
     final policy = ref.watch(policyProvider);
     final layers = layerBreakdown(positions, meta, quotes, policy);

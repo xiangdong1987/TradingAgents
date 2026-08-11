@@ -226,6 +226,30 @@ void main() {
       final summary = summarize(positions, meta, noFx);
       expect(cumulativeReturn(summary, const [], const [], noFx), isNull);
     });
+
+    test('eurTickers keeps a custom-name bond (BTP2030) in EUR, fx or not', () {
+      // BTP2030 不匹配 isEurListing 的 .MI/.DE/IT-ISIN 规则；不传 eurTickers
+      // 的话会被当 USD 处理——无汇率时 incomeEur 整体是 null，有汇率时被腰斩。
+      final positions = [
+        Position(ticker: 'BTP2030', shares: 1, avgCost: 45000, atCost: true,
+            updatedAt: DateTime.utc(2026)),
+      ];
+      const meta = PortfolioMeta(cash: 0, currency: 'EUR');
+      final incomes = [inc('BTP2030', 900)];
+      const eurTickers = {'BTP2030'};
+
+      const noFx = <String, TickerQuote>{};
+      final summaryNoFx = summarize(positions, meta, noFx);
+      final rNoFx = cumulativeReturn(summaryNoFx, const [], incomes, noFx,
+          eurTickers: eurTickers)!;
+      expect(rNoFx, isNotNull);
+      expect(rNoFx.incomeEur, 900);
+
+      final summaryWithFx = summarize(positions, meta, quotes);
+      final rWithFx = cumulativeReturn(summaryWithFx, const [], incomes, quotes,
+          eurTickers: eurTickers)!;
+      expect(rWithFx.incomeEur, 900);
+    });
   });
 
   group('累计收益的税前/税后', () {
