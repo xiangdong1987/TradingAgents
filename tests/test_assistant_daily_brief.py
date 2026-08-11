@@ -455,3 +455,71 @@ def test_brief_non_bond_at_cost_copy_unchanged():
                          fetch_positioning=lambda t: None,
                          fetch_futures=lambda: [])
     assert "## CASHDEP01（持仓）\n按成本计价资产（无行情）" in llm.prompts[0]
+
+
+def _posi_gex(t):
+    return {"gexMUsd": -740.0, "callWall": 225.0, "putWall": 215.0}
+
+
+def test_brief_option_face_line_full():
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=_posi_gex, fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    assert "期权面: GEX -740M$（负Gamma）· Call墙 225 · Put墙 215" in prompt
+
+
+def test_brief_option_face_line_partial_and_absent():
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: {"callWall": 210.0},
+                         fetch_futures=lambda: [])
+    assert "期权面: Call墙 210" in llm.prompts[0]
+
+    store2, llm2 = make_store(), FakeLLM()
+    generate_daily_brief(store2, llm2, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: {"shortRatioDays": 2.0},
+                         fetch_futures=lambda: [])
+    assert "期权面:" not in llm2.prompts[0]     # 三键全缺不写此行
+
+
+def test_brief_prompt_carries_gex_guidance_and_labels():
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None,
+                         fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    assert "GEX 为做市商净 Gamma 敞口" in prompt
+    assert "【偏多】【偏空】【区间震荡】【高波动警惕】" in prompt
+    assert "【数据不足】" in prompt
+
+
+def test_brief_spy_option_face_in_futures_block():
+    def posi(t):
+        if t == "SPY":
+            return {"gexMUsd": 1200.0, "callWall": 580.0, "putWall": 560.0}
+        return None
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=posi, fetch_futures=lambda: [])
+    assert "SPY 期权面: GEX +1200M$（正Gamma）· Call墙 580 · Put墙 560" in llm.prompts[0]
+
+
+def test_brief_spy_face_absent_when_unavailable():
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None,
+                         fetch_futures=lambda: [])
+    assert "SPY 期权面" not in llm.prompts[0]
