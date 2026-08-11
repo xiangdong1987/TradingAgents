@@ -9,7 +9,7 @@ from assistant.quotes import (get_futures_snapshot, get_money_flow,
 from assistant.store import utc_now_iso
 
 _PROMPT_TEMPLATE = """你是一位谨慎的投资研究助理。基于以下数据写一份每日投资日报（Markdown）。
-结构：## 组合概览（含现金与浮动盈亏）→ ## 持仓点评（每只一两句，结合资金流）→ ## 自选分析与推荐 → ## 值得注意（异动、风险，若某只股值得做一次深度多agent分析请点名；对已到期的国债应强调其需要处理本金回收）。持仓点评与自选分析里，每只美股结尾给固定方向标签之一：【偏多】【偏空】【区间震荡】【高波动警惕】+ 一句理由（综合期权面、资金流、做空与新闻）；无期权数据的标的只按资金流与新闻给标签，依据不足时写【数据不足】，不要硬编。
+结构：## 组合概览（含现金与浮动盈亏）→ ## 持仓点评（每只一两句，结合资金流）→ ## 自选分析与推荐 → ## 值得注意（异动、风险，若某只股值得做一次深度多agent分析请点名；对已到期的国债应强调其需要处理本金回收）。持仓点评与自选分析里，每只美股结尾给固定方向标签之一：【偏多】【偏空】【区间震荡】【高波动警惕】+ 一句理由（综合期权面、资金流、做空与新闻）；无期权数据的标的（意/德股、国债）只按资金流与新闻给标签，依据不足时写【数据不足】，不要硬编。
 「自选分析与推荐」只写这些未持仓的自选股：{watch_only_line}。每只 1-2 句，结合行情、资金流与新闻，并以固定标签之一结尾：【值得深挖】【回调关注】【观望】【建议移除】。持仓股只出现在持仓点评，不要重复。
 只依据给出的数据，不要编造数字。资金流口径：量比 = 今日成交量/20日均量；MFI 为 14 日资金流指标（>80 超买，<20 超卖）；OBV 为能量潮方向。多空口径：空头占流通盘越高、环比上升 = 看空压力增；回补天数为空头全部回补所需交易日；期权 P/C>1 偏空、<1 偏多；做空数据为 FINRA 双周频，非实时。期权面口径：GEX 为做市商净 Gamma 敞口（正 = 对冲盘压波动、区间倾向；负 = 助涨助跌、易加速）；Call 墙为最大阻力位、Put 墙为最大支撑位；负 Gamma 且跌破 Put 墙是加速下行信号，数据为 30 天内期权链聚合。若有期指数据，组合概览开头点一句隔夜期指情绪。日期：{today}
 {bilingual}
@@ -39,8 +39,9 @@ def _option_face(posi: dict | None) -> str | None:
         return None
     bits = []
     if "gexMUsd" in posi:
-        tone = "正Gamma" if posi["gexMUsd"] >= 0 else "负Gamma"
-        bits.append(f"GEX {posi['gexMUsd']:+.0f}M$（{tone}）")
+        gex = posi["gexMUsd"] + 0.0  # 归一化负零为正零，避免 IEEE -0.0 误判
+        tone = "正Gamma" if gex >= 0 else "负Gamma"
+        bits.append(f"GEX {gex:+.0f}M$（{tone}）")
     if "callWall" in posi:
         bits.append(f"Call墙 {posi['callWall']:g}")
     if "putWall" in posi:

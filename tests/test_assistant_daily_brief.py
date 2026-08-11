@@ -547,3 +547,20 @@ def test_brief_spy_face_absent_when_unavailable():
                          fetch_positioning=lambda t: None,
                          fetch_futures=lambda: [])
     assert "SPY 期权面" not in llm.prompts[0]
+
+
+def test_brief_option_face_negative_zero_normalization():
+    """负零（-0.0）应归一化为 +0.0，避免 IEEE -0 == 0 导致的符号混淆。"""
+    store, llm = make_store(), FakeLLM()
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: {"gexMUsd": -0.0},
+                         fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    for line in prompt.split('\n'):
+        if line.startswith('期权面:'):
+            assert line == "期权面: GEX +0M$（正Gamma）"
+            break
+    else:
+        raise AssertionError("期权面: line not found")
