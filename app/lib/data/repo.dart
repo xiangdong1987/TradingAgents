@@ -196,6 +196,21 @@ class WealthRepo {
     return true;
   }
 
+  /// 国债买入：1 股 @ 金额走 applyTrade（扣现金/记成交/加自选），
+  /// 再把票息参数与 atCost 语义 merge 进 position 文档。
+  Future<void> applyBondBuy({
+    required String ticker, required double amount, required double couponPct,
+    required String payFreq, required String maturity, required String date,
+  }) async {
+    await applyTrade(
+        ticker: ticker, side: 'buy', shares: 1, price: amount, date: date);
+    await _db.collection('positions').doc(ticker).set({
+      'atCost': true, 'holdToMaturity': true, 'assetType': 'bond',
+      'couponPct': couponPct, 'payFreq': payFreq, 'maturity': maturity,
+      'openedAt': date,
+    }, SetOptions(merge: true));
+  }
+
   Future<void> setPosition({
     required String ticker, required double shares, required double avgCost,
     String? openedAt, String? layer, bool? holdToMaturity, bool? atCost,

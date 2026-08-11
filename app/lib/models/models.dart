@@ -42,7 +42,7 @@ class WatchItem {
 class Position {
   const Position({required this.ticker, required this.shares, required this.avgCost,
       required this.updatedAt, this.openedAt, this.layer, this.holdToMaturity,
-      this.atCost});
+      this.atCost, this.assetType, this.couponPct, this.payFreq, this.maturity});
   final String ticker;
   final double shares;
   final double avgCost;
@@ -55,6 +55,11 @@ class Position {
   final bool? holdToMaturity;
   /// 无行情资产（存单等）：按欧元成本计价，runner 跳过行情/扫描。
   final bool? atCost;
+  /// 资产类型：'bond' = 国债（atCost + 票息参数）；空 = 股票。
+  final String? assetType;
+  final double? couponPct;   // 票面年利率 %
+  final String? payFreq;     // 'annual' | 'semiannual'
+  final String? maturity;    // 到期日 YYYY-MM-DD
 
   factory Position.fromDoc(String id, Map<String, dynamic> d) => Position(
         ticker: _s(d['ticker'], id),
@@ -65,6 +70,10 @@ class Position {
         layer: d['layer'] as String?,
         holdToMaturity: d['holdToMaturity'] as bool?,
         atCost: d['atCost'] as bool?,
+        assetType: d['assetType'] as String?,
+        couponPct: (d['couponPct'] as num?)?.toDouble(),
+        payFreq: d['payFreq'] as String?,
+        maturity: d['maturity'] as String?,
       );
 }
 

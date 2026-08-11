@@ -160,6 +160,19 @@ void main() {
       expect(mk().needsTranslation('bull', 'zh'), isFalse);
     });
   });
+
+  test('Position 债券字段 fromDoc', () {
+    final p = Position.fromDoc('BTP2030', {
+      'ticker': 'BTP2030', 'shares': 1, 'avgCost': 45000.0,
+      'updatedAt': '2026-08-11T00:00:00+00:00', 'atCost': true,
+      'assetType': 'bond', 'couponPct': 4.0, 'payFreq': 'semiannual',
+      'maturity': '2030-03-15',
+    });
+    expect(p.assetType, 'bond');
+    expect(p.couponPct, 4.0);
+    expect(p.payFreq, 'semiannual');
+    expect(p.maturity, '2030-03-15');
+  });
 }
 
 Map<String, dynamic> _sug({Object? target}) {

@@ -511,4 +511,34 @@ void main() {
     final doc = (await db.collection('positions').doc('DEPOSITO2027').get()).data()!;
     expect(doc['atCost'], isTrue);
   });
+
+  test('applyBondBuy 记成交+扣现金+写债券字段', () async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('meta').doc('portfolio').set(
+        {'cash': 50000.0, 'currency': 'EUR'});
+    final repo = WealthRepo(db);
+    await repo.applyBondBuy(
+        ticker: 'BTP2030', amount: 45000.0, couponPct: 4.0,
+        payFreq: 'semiannual', maturity: '2030-03-15', date: '2026-08-11');
+
+    final pos = (await db.collection('positions').doc('BTP2030').get()).data()!;
+    expect(pos['shares'], 1.0);
+    expect(pos['avgCost'], 45000.0);
+    expect(pos['atCost'], isTrue);
+    expect(pos['holdToMaturity'], isTrue);
+    expect(pos['assetType'], 'bond');
+    expect(pos['couponPct'], 4.0);
+    expect(pos['payFreq'], 'semiannual');
+    expect(pos['maturity'], '2030-03-15');
+    expect(pos['openedAt'], '2026-08-11');
+
+    final cash = (await db.collection('meta').doc('portfolio').get())
+        .data()!['cash'];
+    expect(cash, 5000.0);                                  // 50000 − 45000
+
+    final trades = await db.collection('trades').get();
+    expect(trades.docs.single.data()['side'], 'buy');
+    expect(trades.docs.single.data()['shares'], 1.0);
+    expect(trades.docs.single.data()['price'], 45000.0);
+  });
 }
