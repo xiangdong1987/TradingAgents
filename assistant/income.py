@@ -201,7 +201,8 @@ def sync_bond_coupons(store, today: str) -> int:
             if not floor:
                 continue    # 不知道从哪天起算，宁可不记
             per_year = 2 if freq == "semiannual" else 1
-            base = float(pos.get("avgCost") or 0.0)
+            shares = float(pos.get("shares") or 1.0)
+            base = shares * float(pos.get("avgCost") or 0.0)
             if base <= 0:
                 continue
             for d in _coupon_dates(maturity, per_year, floor, today):

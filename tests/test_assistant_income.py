@@ -252,6 +252,17 @@ def test_sync_bond_coupons_creates_income_with_gov_tax():
     assert r["source"] == "auto" and r["creditedCash"] is False
 
 
+def test_sync_bond_coupons_uses_shares_times_avg_cost_not_avg_cost_alone():
+    # 追加买入后 applyTrade 会加权平均：两笔各 22500 → shares=2, avgCost=22500，
+    # 面值合计应仍是 45000，不能只按 avgCost（22500）算出腰斩的票息。
+    from assistant.income import sync_bond_coupons
+    s = _bond_store(shares=2, avgCost=22500.0)
+    n = sync_bond_coupons(s, "2026-09-30")
+    assert n == 2
+    rows = {r["date"]: r for r in s.list_income()}
+    assert rows["2026-03-15"]["amount"] == 900.0   # 45000×4%÷2，不是 450.0
+
+
 def test_sync_bond_coupons_idempotent():
     from assistant.income import sync_bond_coupons
     s = _bond_store()

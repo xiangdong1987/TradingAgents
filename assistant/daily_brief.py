@@ -59,8 +59,9 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
                 if pos.get("maturity") and pos["maturity"] <= today:
                     line += "【已到期，待处理本金回收】"
                 ticker_parts.append(f"## {t}（持仓）\n{line}")
+                bond_amount = float(pos.get("shares") or 1.0) * pos["avgCost"]
                 position_parts.append(
-                    f"- {t}: 金额 {pos['avgCost']}，票面 {coupon:.2f}%，按成本计")
+                    f"- {t}: 金额 {bond_amount}，票面 {coupon:.2f}%，按成本计")
             else:
                 # 无行情资产：按欧元成本计价，行情/新闻/资金流/多空全部不拉
                 ticker_parts.append(f"## {t}（持仓）\n按成本计价资产（无行情）")
