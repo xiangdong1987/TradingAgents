@@ -203,3 +203,93 @@ def test_german_dividend_defaults_to_us_style_tax():
     from assistant.income import default_tax_pct, TAX_PCT_US_TOTAL, TAX_PCT_IT
     assert default_tax_pct("SAP.DE") == TAX_PCT_US_TOTAL   # 37.1，非 26
     assert default_tax_pct("ENEL.MI") == TAX_PCT_IT
+
+
+# ---------- 国债票息引擎 ----------
+
+def _bond_store(**overrides):
+    from assistant.store import MemoryStore
+    s = MemoryStore()
+    pos = {"ticker": "BTP2030", "shares": 1, "avgCost": 45000.0,
+           "updatedAt": "x", "atCost": True, "assetType": "bond",
+           "couponPct": 4.0, "payFreq": "semiannual",
+           "maturity": "2030-03-15", "openedAt": "2026-02-01", **overrides}
+    s.seed_positions([pos])
+    return s
+
+
+def test_coupon_dates_semiannual_backwards_from_maturity():
+    from assistant.income import _coupon_dates
+    # 锚点 2030-03-15 半年倒推 → …-03-15 / -09-15；区间 (2026-02-01, 2026-09-30]
+    assert _coupon_dates("2030-03-15", 2, "2026-02-01", "2026-09-30") == [
+        "2026-03-15", "2026-09-15"]
+
+
+def test_coupon_dates_annual_and_floor_exclusive():
+    from assistant.income import _coupon_dates
+    # 年付；floor 恰为付息日当天 → 当天不算（严格大于）
+    assert _coupon_dates("2030-03-15", 1, "2026-03-15", "2027-12-31") == [
+        "2027-03-15"]
+
+
+def test_coupon_dates_clamp_month_end():
+    from assistant.income import _coupon_dates
+    # 锚点 8-31 半年倒推到 2 月 → 夹到 2-28（平年）
+    assert _coupon_dates("2027-08-31", 2, "2026-01-01", "2027-03-01") == [
+        "2026-02-28", "2026-08-31", "2027-02-28"]
+
+
+def test_sync_bond_coupons_creates_income_with_gov_tax():
+    from assistant.income import sync_bond_coupons, TAX_PCT_IT_GOV
+    s = _bond_store()
+    n = sync_bond_coupons(s, "2026-09-30")
+    assert n == 2                                  # 03-15 与 09-15
+    rows = {r["date"]: r for r in s.list_income()}
+    r = rows["2026-03-15"]
+    assert r["amount"] == 900.0                    # 45000×4%÷2
+    assert r["taxPct"] == TAX_PCT_IT_GOV == 12.5
+    assert r["taxAmount"] == 112.5                 # 900×12.5%
+    assert r["source"] == "auto" and r["creditedCash"] is False
+
+
+def test_sync_bond_coupons_idempotent():
+    from assistant.income import sync_bond_coupons
+    s = _bond_store()
+    assert sync_bond_coupons(s, "2026-09-30") == 2
+    assert sync_bond_coupons(s, "2026-09-30") == 0   # 再跑不重复
+
+
+def test_sync_bond_coupons_skips_incomplete_or_unknown_start():
+    from assistant.income import sync_bond_coupons
+    assert sync_bond_coupons(_bond_store(couponPct=None), "2026-09-30") == 0
+    assert sync_bond_coupons(_bond_store(payFreq="quarterly"), "2026-09-30") == 0
+    # 无 openedAt 且无买入成交 → 不猜，跳过
+    assert sync_bond_coupons(_bond_store(openedAt=None), "2026-09-30") == 0
+
+
+def test_sync_bond_coupons_falls_back_to_first_buy_trade():
+    from assistant.income import sync_bond_coupons
+    s = _bond_store(openedAt=None)
+    s.seed_trades([{"ticker": "BTP2030", "side": "buy", "shares": 1,
+                    "price": 45000.0, "date": "2026-02-01"}])
+    assert sync_bond_coupons(s, "2026-09-30") == 2
+
+
+def test_sync_bond_coupons_isolates_per_position_errors():
+    from assistant.income import sync_bond_coupons
+    s = MemoryStore()
+    # 一次性 seed 两条位置：一条坏数据、一条好数据
+    s.seed_positions([
+        {"ticker": "BAD", "shares": 1, "avgCost": 1000.0, "updatedAt": "x",
+         "atCost": True, "assetType": "bond", "couponPct": 3.0,
+         "payFreq": "annual", "maturity": "not-a-date", "openedAt": "2026-01-01"},
+        {"ticker": "BTP2030", "shares": 1, "avgCost": 45000.0,
+         "updatedAt": "x", "atCost": True, "assetType": "bond",
+         "couponPct": 4.0, "payFreq": "semiannual",
+         "maturity": "2030-03-15", "openedAt": "2026-02-01"},
+    ])
+    assert sync_bond_coupons(s, "2026-09-30") == 2
+
+    # 股票持仓完全不受影响
+    s2 = _bond_store(assetType=None)
+    assert sync_bond_coupons(s2, "2026-09-30") == 0

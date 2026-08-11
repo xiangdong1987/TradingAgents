@@ -55,6 +55,8 @@ TAX_PCT_US_TOTAL = round(
 # 卖出资本利得：意大利税务居民全球所得按 26%（亏损不计税）。
 TAX_PCT_CAPITAL_GAINS = TAX_PCT_IT
 
+TAX_PCT_IT_GOV = 12.5   # 意大利国债/政府债票息优惠税率（≠26%）
+
 
 def income_id(ticker: str, date: str) -> str:
     return f"{ticker}_{date}"
@@ -150,4 +152,73 @@ def sync_dividends(store, today: str, *, fetch_dividends=get_dividends,
             added += 1
             logger.info("income: %s %s %s/share × %s = %s (tax %s%%)",
                         ticker, date, per_share, shares, amount, tax_pct)
+    return added
+
+
+def _coupon_dates(maturity: str, per_year: int, floor: str, today: str) -> list[str]:
+    """付息日历：从到期日按频率倒推，取 (floor, today] 区间内的日期（升序）。
+
+    锚定到期日是国债惯例（BTP 半年付 = 到期月/日 ±6 个月）。锚定**日号**
+    单独保存、每期对目标月重新夹紧——若先夹紧再倒推，8-31 夹到 2-28 后
+    下一期会错成 8-28。floor 是买入日，严格大于——买入当天的付息属于前手。
+    """
+    from calendar import monthrange
+    step = 12 // per_year
+    y, m, anchor_day = (int(x) for x in maturity.split("-"))
+    dates = []
+    while True:
+        d = min(anchor_day, monthrange(y, m)[1])
+        cur = f"{y:04d}-{m:02d}-{d:02d}"
+        if cur <= floor:
+            break
+        if cur <= today:
+            dates.append(cur)
+        m -= step
+        while m <= 0:
+            m += 12
+            y -= 1
+    return sorted(dates)
+
+
+def sync_bond_coupons(store, today: str) -> int:
+    """国债票息自动入账：按付息日历补齐 (买入日, 今天] 的利息记录。
+
+    幂等（income id = ticker_日期，与分红同一套路）；单券异常只跳过该券。
+    利息按投入金额近似面值（spec 写死的简化），税 12.5%。
+    """
+    added = 0
+    for pos in store.get_positions():
+        try:
+            if pos.get("assetType") != "bond":
+                continue
+            coupon = pos.get("couponPct")
+            maturity = pos.get("maturity")
+            freq = pos.get("payFreq")
+            if not coupon or not maturity or freq not in ("annual", "semiannual"):
+                continue
+            ticker = pos["ticker"]
+            floor = pos.get("openedAt") or opened_floor(store, ticker)
+            if not floor:
+                continue    # 不知道从哪天起算，宁可不记
+            per_year = 2 if freq == "semiannual" else 1
+            base = float(pos.get("avgCost") or 0.0)
+            if base <= 0:
+                continue
+            for d in _coupon_dates(maturity, per_year, floor, today):
+                # 写入/查重与 sync_dividends 完全同套路（income id、字段形状）
+                income_id_str = f"{ticker}_{d}"
+                if store.has_income(ticker, d):
+                    continue
+                amount = round(base * float(coupon) / 100 / per_year, 2)
+                store.add_income({
+                    "id": income_id_str,
+                    "ticker": ticker, "date": d, "amount": amount,
+                    "taxPct": TAX_PCT_IT_GOV,
+                    "taxAmount": round(amount * TAX_PCT_IT_GOV / 100, 2),
+                    "source": "auto", "note": "国债票息",
+                    "creditedCash": False, "createdAt": utc_now_iso(),
+                })
+                added += 1
+        except Exception:
+            logger.exception("bond coupon sync failed for %s", pos.get("ticker"))
     return added
