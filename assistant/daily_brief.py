@@ -45,9 +45,7 @@ def _option_face(posi: dict | None) -> str | None:
         bits.append(f"Call墙 {posi['callWall']:g}")
     if "putWall" in posi:
         bits.append(f"Put墙 {posi['putWall']:g}")
-    if bits:
-        return bits[0] + "· " + " · ".join(bits[1:])
-    return None
+    return " · ".join(bits) if bits else None
 
 
 def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,

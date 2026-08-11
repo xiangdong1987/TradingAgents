@@ -468,25 +468,49 @@ def test_brief_option_face_line_full():
                          fetch_money_flow=lambda t, d: None,
                          fetch_positioning=_posi_gex, fetch_futures=lambda: [])
     prompt = llm.prompts[0]
-    assert "期权面: GEX -740M$（负Gamma）· Call墙 225 · Put墙 215" in prompt
+    assert "期权面: GEX -740M$（负Gamma） · Call墙 225 · Put墙 215" in prompt
 
 
 def test_brief_option_face_line_partial_and_absent():
+    # 单键：Call墙
     store, llm = make_store(), FakeLLM()
     generate_daily_brief(store, llm, "2026-08-11",
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
                          fetch_money_flow=lambda t, d: None,
                          fetch_positioning=lambda t: {"callWall": 210.0},
                          fetch_futures=lambda: [])
-    assert "期权面: Call墙 210" in llm.prompts[0]
+    prompt = llm.prompts[0]
+    # 行级精确断言
+    for line in prompt.split('\n'):
+        if line.startswith('期权面:'):
+            assert line == "期权面: Call墙 210"
+            break
+    else:
+        raise AssertionError("期权面: line not found")
 
+    # 两键：Call墙 + Put墙
     store2, llm2 = make_store(), FakeLLM()
     generate_daily_brief(store2, llm2, "2026-08-11",
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
                          fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: {"callWall": 225.0, "putWall": 215.0},
+                         fetch_futures=lambda: [])
+    prompt2 = llm2.prompts[0]
+    for line in prompt2.split('\n'):
+        if line.startswith('期权面:'):
+            assert line == "期权面: Call墙 225 · Put墙 215"
+            break
+    else:
+        raise AssertionError("期权面: line not found")
+
+    # 三键全缺：不写此行
+    store3, llm3 = make_store(), FakeLLM()
+    generate_daily_brief(store3, llm3, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
                          fetch_positioning=lambda t: {"shortRatioDays": 2.0},
                          fetch_futures=lambda: [])
-    assert "期权面:" not in llm2.prompts[0]     # 三键全缺不写此行
+    assert "期权面:" not in llm3.prompts[0]     # 三键全缺不写此行
 
 
 def test_brief_prompt_carries_gex_guidance_and_labels():
@@ -512,7 +536,7 @@ def test_brief_spy_option_face_in_futures_block():
                          fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
                          fetch_money_flow=lambda t, d: None,
                          fetch_positioning=posi, fetch_futures=lambda: [])
-    assert "SPY 期权面: GEX +1200M$（正Gamma）· Call墙 580 · Put墙 560" in llm.prompts[0]
+    assert "SPY 期权面: GEX +1200M$（正Gamma） · Call墙 580 · Put墙 560" in llm.prompts[0]
 
 
 def test_brief_spy_face_absent_when_unavailable():
