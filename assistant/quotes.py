@@ -366,7 +366,7 @@ def get_positioning(ticker: str, *, _ticker_factory=None, _today: str | None = N
                                           float(row.get("impliedVolatility") or 0),
                                           t_years)
                             if g > 0:
-                                gex += sign * g * oi * spot * spot * 0.1
+                                gex += sign * g * oi * 100 * spot * spot * 0.01
                                 gex_any = True
                         if sign > 0:
                             call_oi_total += float(df["openInterest"].sum())

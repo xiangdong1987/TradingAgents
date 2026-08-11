@@ -198,7 +198,7 @@ def test_positioning_full_data_hand_computed():
                         _today="2026-08-11")
     assert p == {"shortPctFloat": 1.39, "shortChangePct": 8.0,
                  "shortRatioDays": 2.24, "pcOi": 2.0, "pcVol": 0.5,
-                 "gexMUsd": -5.0, "callWall": 100.0, "putWall": 100.0}
+                 "gexMUsd": -48.0, "callWall": 100.0, "putWall": 100.0}
 
 
 def test_positioning_partial_data_keeps_available_keys():
@@ -210,7 +210,7 @@ def test_positioning_partial_data_keeps_available_keys():
 
 def test_positioning_chain_failure_keeps_short_keys():
     from assistant.quotes import get_positioning
-    fake = _FakeYfTicker(info={"shortRatio": 3.5}, expiries=("2026-08-08",),
+    fake = _FakeYfTicker(info={"shortRatio": 3.5, "regularMarketPrice": 100.0}, expiries=("2026-08-08",),
                          chain=None)                   # option_chain 会抛
     p = get_positioning("VST", _ticker_factory=lambda t: fake)
     assert p == {"shortRatioDays": 3.5}
@@ -286,18 +286,18 @@ def test_positioning_walls_from_aggregated_oi():
 def test_positioning_window_and_cap():
     from assistant.quotes import get_positioning
     chain = _FakeChain(calls=[(100.0, 100000, 0, 0.5)], puts=[])
-    # 45 天外的到期被窗口排除：只剩一个 10 天的 → GEX = +5.0
+    # 45 天外的到期被窗口排除：只剩一个 10 天的 → GEX = +48.0
     fake = _FakeYfTicker(info={"regularMarketPrice": 100.0},
                          expiries=("2026-08-21", "2026-09-25"), chain=chain)
     p = get_positioning("KO", _ticker_factory=lambda t: fake,
                         _today="2026-08-11")
-    assert p["gexMUsd"] == 5.0
-    # 窗口内 8 个同天数到期 → 只取前 6 个 → 6×4.816M ≈ 28.9 → 29.0
+    assert p["gexMUsd"] == 48.0
+    # 窗口内 8 个同天数到期 → 只取前 6 个 → 6×48.163M ≈ 288.98 → 289.0
     fake8 = _FakeYfTicker(info={"regularMarketPrice": 100.0},
                           expiries=tuple(["2026-08-21"] * 8), chain=chain)
     p8 = get_positioning("KO", _ticker_factory=lambda t: fake8,
                          _today="2026-08-11")
-    assert p8["gexMUsd"] == 29.0
+    assert p8["gexMUsd"] == 289.0
 
 
 def test_positioning_iv_missing_counts_walls_not_gex():
