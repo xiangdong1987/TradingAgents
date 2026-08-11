@@ -407,3 +407,51 @@ def test_top_up_skips_at_cost_ticker():
         return {"ticker": t, "close": 1.0, "prevClose": 1.0, "pctChange": 0.0}
     top_up_quotes(store, "2026-08-01", fetch_quote=q)
     assert "DEPOSITO2027" not in fetched
+
+
+def _seed_bond(store, **overrides):
+    store.seed_positions([
+        {"ticker": "BTP2030", "shares": 1, "avgCost": 45000.0,
+         "updatedAt": "x", "atCost": True, "assetType": "bond",
+         "couponPct": 4.0, "payFreq": "semiannual",
+         "maturity": "2030-03-15", **overrides},
+    ])
+
+
+def test_brief_bond_block_shows_coupon_and_maturity():
+    store, llm = make_store(), FakeLLM()
+    _seed_bond(store)
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None,
+                         fetch_futures=lambda: [])
+    prompt = llm.prompts[0]
+    assert "## BTP2030（持仓）\n国债 票面 4.00% 半年付 · 到期 2030-03-15 · 按成本计价" in prompt
+    assert "- BTP2030: 金额 45000.0，票面 4.00%，按成本计" in prompt
+    assert "【已到期" not in prompt
+
+
+def test_brief_matured_bond_gets_reminder():
+    store, llm = make_store(), FakeLLM()
+    _seed_bond(store, maturity="2026-08-01")           # 已到期
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None,
+                         fetch_futures=lambda: [])
+    assert "【已到期，待处理本金回收】" in llm.prompts[0]
+
+
+def test_brief_non_bond_at_cost_copy_unchanged():
+    store, llm = make_store(), FakeLLM()
+    store.seed_positions([
+        {"ticker": "CASHDEP01", "shares": 1, "avgCost": 5000.0,
+         "updatedAt": "x", "atCost": True},
+    ])
+    generate_daily_brief(store, llm, "2026-08-11",
+                         fetch_quote=ok_quote, fetch_news=lambda t, s, e: "n",
+                         fetch_money_flow=lambda t, d: None,
+                         fetch_positioning=lambda t: None,
+                         fetch_futures=lambda: [])
+    assert "## CASHDEP01（持仓）\n按成本计价资产（无行情）" in llm.prompts[0]

@@ -9,7 +9,7 @@ from assistant.quotes import (get_futures_snapshot, get_money_flow,
 from assistant.store import utc_now_iso
 
 _PROMPT_TEMPLATE = """你是一位谨慎的投资研究助理。基于以下数据写一份每日投资日报（Markdown）。
-结构：## 组合概览（含现金与浮动盈亏）→ ## 持仓点评（每只一两句，结合资金流）→ ## 自选分析与推荐 → ## 值得注意（异动、风险，若某只股值得做一次深度多agent分析请点名）。
+结构：## 组合概览（含现金与浮动盈亏）→ ## 持仓点评（每只一两句，结合资金流）→ ## 自选分析与推荐 → ## 值得注意（异动、风险，若某只股值得做一次深度多agent分析请点名；对已到期的国债应强调其需要处理本金回收）。
 「自选分析与推荐」只写这些未持仓的自选股：{watch_only_line}。每只 1-2 句，结合行情、资金流与新闻，并以固定标签之一结尾：【值得深挖】【回调关注】【观望】【建议移除】。持仓股只出现在持仓点评，不要重复。
 只依据给出的数据，不要编造数字。资金流口径：量比 = 今日成交量/20日均量；MFI 为 14 日资金流指标（>80 超买，<20 超卖）；OBV 为能量潮方向。多空口径：空头占流通盘越高、环比上升 = 看空压力增；回补天数为空头全部回补所需交易日；期权 P/C>1 偏空、<1 偏多；做空数据为 FINRA 双周频，非实时。若有期指数据，组合概览开头点一句隔夜期指情绪。日期：{today}
 {bilingual}
@@ -51,10 +51,21 @@ def generate_daily_brief(store, llm, today: str, *, fetch_quote=get_quote,
     for t in tickers:
         pos = positions.get(t)
         if pos and pos.get("atCost"):
-            # 无行情资产：按欧元成本计价，行情/新闻/资金流/多空全部不拉
-            ticker_parts.append(f"## {t}（持仓）\n按成本计价资产（无行情）")
-            position_parts.append(
-                f"- {t}: {pos['shares']} 股 @ 成本 {pos['avgCost']}，按成本计")
+            if pos.get("assetType") == "bond":
+                freq_txt = "半年付" if pos.get("payFreq") == "semiannual" else "年付"
+                coupon = float(pos.get("couponPct") or 0)
+                mat = pos.get("maturity") or "未知"
+                line = f"国债 票面 {coupon:.2f}% {freq_txt} · 到期 {mat} · 按成本计价"
+                if pos.get("maturity") and pos["maturity"] <= today:
+                    line += "【已到期，待处理本金回收】"
+                ticker_parts.append(f"## {t}（持仓）\n{line}")
+                position_parts.append(
+                    f"- {t}: 金额 {pos['avgCost']}，票面 {coupon:.2f}%，按成本计")
+            else:
+                # 无行情资产：按欧元成本计价，行情/新闻/资金流/多空全部不拉
+                ticker_parts.append(f"## {t}（持仓）\n按成本计价资产（无行情）")
+                position_parts.append(
+                    f"- {t}: {pos['shares']} 股 @ 成本 {pos['avgCost']}，按成本计")
             continue
         try:
             q = fetch_quote(t)

@@ -42,7 +42,7 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
     from assistant.events import refresh_calendar
     from assistant.chat import answer_chat
     from assistant.strategies import engine as strategy_engine
-    from assistant.income import backfill_income_tax, sync_dividends
+    from assistant.income import backfill_income_tax, sync_dividends, sync_bond_coupons
     from assistant.store import utc_now_iso
 
     if now_et is None:
@@ -169,6 +169,9 @@ def run_once(store, llm, config, *, now_et=None, is_trading_day=None,
             n = sync_dividends(store, today_str, **kwargs)
             if n:
                 logger.info("dividend sync: %d new income row(s)", n)
+            coupons = sync_bond_coupons(store, today_str)
+            if coupons:
+                logger.info("bond coupon sync: %d new row(s)", coupons)
             if hasattr(store, "save_meta_doc"):
                 store.save_meta_doc("income_sync", {"date": today_str,
                                                     "updatedAt": utc_now_iso()})

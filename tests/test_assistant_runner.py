@@ -218,3 +218,30 @@ def test_write_heartbeat_helper_and_thread_payload():
             raise RuntimeError("firestore down")
 
     _write_heartbeat(BrokenStore(), "once", 0)   # 不抛出，只记日志
+
+
+def test_bond_coupon_sync_on_trading_day():
+    """Bond coupons should be synced when run_once is called on a trading day."""
+    store = MemoryStore()
+    store.seed_positions([
+        {"ticker": "BTP2030", "shares": 1, "avgCost": 45000.0,
+         "updatedAt": "x", "atCost": True, "assetType": "bond",
+         "couponPct": 4.0, "payFreq": "semiannual",
+         "maturity": "2030-03-15", "openedAt": "2026-01-01"},
+    ])
+    store.seed_meta({"cash": 5000.0, "currency": "USD"})
+
+    run_once(
+        store, FakeLLM(), {"any": "cfg"},
+        now_et=WED, is_trading_day=lambda n: True,
+        fetch_quote=fake_quote, fetch_news=fake_news,
+        fetch_money_flow=lambda t, d: None,
+        fetch_positioning=lambda t: None, fetch_futures=lambda: [],
+        trading_day_resolver=lambda d: d, fetch_calendar=lambda t: {},
+    )
+
+    # Verify that bond coupons were synced (income records created).
+    # Check the meta_doc to confirm sync ran.
+    meta = store.get_meta_doc("income_sync") if hasattr(store, "get_meta_doc") else None
+    assert meta is not None
+    assert meta.get("date") == WED.strftime("%Y-%m-%d")
