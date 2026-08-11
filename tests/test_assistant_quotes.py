@@ -158,10 +158,18 @@ def test_money_flow_none_on_dirty_zero_close():
 # ---------- get_positioning / get_futures_snapshot ----------
 
 class _FakeChain:
-    def __init__(self, calls_oi, puts_oi, calls_vol, puts_vol):
+    """rows: list of (strike, oi, volume, iv)。"""
+    def __init__(self, calls, puts):
         import pandas as pd
-        self.calls = pd.DataFrame({"openInterest": calls_oi, "volume": calls_vol})
-        self.puts = pd.DataFrame({"openInterest": puts_oi, "volume": puts_vol})
+        def df(rows):
+            return pd.DataFrame({
+                "strike": [r[0] for r in rows],
+                "openInterest": [r[1] for r in rows],
+                "volume": [r[2] for r in rows],
+                "impliedVolatility": [r[3] for r in rows],
+            })
+        self.calls = df(calls)
+        self.puts = df(puts)
 
 
 class _FakeYfTicker:
@@ -180,14 +188,17 @@ def test_positioning_full_data_hand_computed():
     from assistant.quotes import get_positioning
     fake = _FakeYfTicker(
         info={"shortPercentOfFloat": 0.0139, "sharesShort": 108,
-              "sharesShortPriorMonth": 100, "shortRatio": 2.24},
-        expiries=("2026-08-08",),
-        chain=_FakeChain(calls_oi=[100, 100], puts_oi=[49, 49],
-                         calls_vol=[10, 10], puts_vol=[5, 5]),
+              "sharesShortPriorMonth": 100, "shortRatio": 2.24,
+              "regularMarketPrice": 100.0},
+        expiries=("2026-08-21",),
+        chain=_FakeChain(calls=[(100.0, 100000, 10, 0.5)],
+                         puts=[(100.0, 200000, 5, 0.5)]),
     )
-    p = get_positioning("NVDA", _ticker_factory=lambda t: fake)
+    p = get_positioning("NVDA", _ticker_factory=lambda t: fake,
+                        _today="2026-08-11")
     assert p == {"shortPctFloat": 1.39, "shortChangePct": 8.0,
-                 "shortRatioDays": 2.24, "pcOi": 0.49, "pcVol": 0.5}
+                 "shortRatioDays": 2.24, "pcOi": 2.0, "pcVol": 0.5,
+                 "gexMUsd": -5.0, "callWall": 100.0, "putWall": 100.0}
 
 
 def test_positioning_partial_data_keeps_available_keys():
@@ -248,3 +259,68 @@ def test_positioning_none_for_de_without_fetching():
     def boom(t):
         raise AssertionError("德股不应该发请求")
     assert get_positioning("SAP.DE", _ticker_factory=boom) is None
+
+
+def test_bs_gamma_hand_computed():
+    from assistant.quotes import _bs_gamma
+    # S=100,K=100,σ=0.5,T=10/365 → Γ≈0.0481632（手算）
+    assert abs(_bs_gamma(100.0, 100.0, 0.5, 10 / 365) - 0.0481632) < 1e-6
+    assert _bs_gamma(100.0, 100.0, 0.0, 0.1) == 0.0     # IV 缺失
+    assert _bs_gamma(100.0, 100.0, 0.5, 0.0) == 0.0     # 已到期
+
+
+def test_positioning_walls_from_aggregated_oi():
+    from assistant.quotes import get_positioning
+    fake = _FakeYfTicker(
+        info={"regularMarketPrice": 100.0},
+        expiries=("2026-08-21",),
+        chain=_FakeChain(calls=[(90.0, 10, 0, 0.5), (110.0, 50, 0, 0.5)],
+                         puts=[(95.0, 70, 0, 0.5), (80.0, 20, 0, 0.5)]),
+    )
+    p = get_positioning("KO", _ticker_factory=lambda t: fake,
+                        _today="2026-08-11")
+    assert p["callWall"] == 110.0
+    assert p["putWall"] == 95.0
+
+
+def test_positioning_window_and_cap():
+    from assistant.quotes import get_positioning
+    chain = _FakeChain(calls=[(100.0, 100000, 0, 0.5)], puts=[])
+    # 45 天外的到期被窗口排除：只剩一个 10 天的 → GEX = +5.0
+    fake = _FakeYfTicker(info={"regularMarketPrice": 100.0},
+                         expiries=("2026-08-21", "2026-09-25"), chain=chain)
+    p = get_positioning("KO", _ticker_factory=lambda t: fake,
+                        _today="2026-08-11")
+    assert p["gexMUsd"] == 5.0
+    # 窗口内 8 个同天数到期 → 只取前 6 个 → 6×4.816M ≈ 28.9 → 29.0
+    fake8 = _FakeYfTicker(info={"regularMarketPrice": 100.0},
+                          expiries=tuple(["2026-08-21"] * 8), chain=chain)
+    p8 = get_positioning("KO", _ticker_factory=lambda t: fake8,
+                         _today="2026-08-11")
+    assert p8["gexMUsd"] == 29.0
+
+
+def test_positioning_iv_missing_counts_walls_not_gex():
+    from assistant.quotes import get_positioning
+    fake = _FakeYfTicker(
+        info={"regularMarketPrice": 100.0},
+        expiries=("2026-08-21",),
+        chain=_FakeChain(calls=[(110.0, 100000, 10, 0.0)], puts=[]),
+    )
+    p = get_positioning("KO", _ticker_factory=lambda t: fake,
+                        _today="2026-08-11")
+    assert p["callWall"] == 110.0
+    assert "gexMUsd" not in p          # 没有任何合约计入 GEX 就不写
+    assert p["pcOi"] == 0.0            # put 0 / call >0
+
+
+def test_positioning_no_spot_drops_option_keys():
+    from assistant.quotes import get_positioning
+    fake = _FakeYfTicker(
+        info={"shortRatio": 2.0},       # 无 regularMarketPrice/previousClose
+        expiries=("2026-08-21",),
+        chain=_FakeChain(calls=[(100.0, 100, 10, 0.5)], puts=[]),
+    )
+    p = get_positioning("KO", _ticker_factory=lambda t: fake,
+                        _today="2026-08-11")
+    assert p == {"shortRatioDays": 2.0}

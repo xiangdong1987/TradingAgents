@@ -1,6 +1,7 @@
 """Numeric quote helpers for the assistant (engine dataflows return prose)."""
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 
 
@@ -291,12 +292,23 @@ def get_money_flow(ticker: str, end_date: str, *,
 _FUTURES = (("ES=F", "标普500期指"), ("NQ=F", "纳指100期指"))
 
 
-def get_positioning(ticker: str, *, _ticker_factory=None) -> dict | None:
-    """个股多空：做空数据（FINRA 双周频）+ 最近到期期权 put/call 比。
+def _bs_gamma(spot: float, strike: float, iv: float, t_years: float) -> float:
+    """Black-Scholes gamma（r=0 简化）。参数非法一律 0，永不抛出。"""
+    if iv <= 0 or t_years <= 0 or spot <= 0 or strike <= 0:
+        return 0.0
+    d1 = (math.log(spot / strike) + 0.5 * iv * iv * t_years) / (
+        iv * math.sqrt(t_years))
+    return math.exp(-0.5 * d1 * d1) / math.sqrt(2 * math.pi) / (
+        spot * iv * math.sqrt(t_years))
+
+
+def get_positioning(ticker: str, *, _ticker_factory=None, _today: str | None = None) -> dict | None:
+    """个股多空：做空数据（FINRA 双周频）+ 30 天内到期链聚合的 put/call 比、净 Gamma 敞口（GEX）与 Call/Put 墙。
 
     键全部可选（数据源缺哪个就不写哪个），至少一键才返回 dict。美股以外
     （ISIN、.MI、.DE 无此数据，省两次白调用）、五键全无、任何异常一律返回
-    None，绝不抛出。``_ticker_factory`` 供测试注入假 ``yf.Ticker``。
+    None，绝不抛出。``_ticker_factory`` 供测试注入假 ``yf.Ticker``。``_today``
+    供测试注入日期（缺省取 UTC 今天）。
     """
     if is_isin(ticker) or ticker.upper().endswith((".MI", ".DE")):
         return None
@@ -316,17 +328,62 @@ def get_positioning(ticker: str, *, _ticker_factory=None) -> dict | None:
         if info.get("shortRatio"):
             out["shortRatioDays"] = round(info["shortRatio"], 2)
         try:
-            expiries = tk.options
-            if expiries:
-                chain = tk.option_chain(expiries[0])
-                call_oi = float(chain.calls["openInterest"].sum())
-                put_oi = float(chain.puts["openInterest"].sum())
-                if call_oi > 0:
-                    out["pcOi"] = round(put_oi / call_oi, 2)
-                call_vol = float(chain.calls["volume"].sum())
-                put_vol = float(chain.puts["volume"].sum())
+            spot = info.get("regularMarketPrice") or info.get("previousClose")
+            if spot:
+                spot = float(spot)
+                today_d = (datetime.strptime(_today, "%Y-%m-%d").date()
+                           if _today else datetime.utcnow().date())
+                expiries = []
+                for e in tk.options or ():
+                    try:
+                        days = (datetime.strptime(e, "%Y-%m-%d").date()
+                                - today_d).days
+                    except ValueError:
+                        continue
+                    if 0 <= days <= 30:
+                        expiries.append((e, days))
+                expiries = expiries[:6]
+
+                call_oi_total = put_oi_total = call_vol = put_vol = 0.0
+                call_walls: dict[float, float] = {}
+                put_walls: dict[float, float] = {}
+                gex, gex_any = 0.0, False
+                for e, days in expiries:
+                    try:
+                        chain = tk.option_chain(e)
+                    except Exception:
+                        continue          # 单到期失败跳过
+                    t_years = max(days / 365, 1 / 365)
+                    for df, sign, walls in ((chain.calls, 1, call_walls),
+                                            (chain.puts, -1, put_walls)):
+                        for _, row in df.iterrows():
+                            oi = float(row.get("openInterest") or 0)
+                            strike = float(row.get("strike") or 0)
+                            if not (oi > 0 and strike > 0):
+                                continue   # NaN 比较为 False，一并挡掉
+                            walls[strike] = walls.get(strike, 0.0) + oi
+                            g = _bs_gamma(spot, strike,
+                                          float(row.get("impliedVolatility") or 0),
+                                          t_years)
+                            if g > 0:
+                                gex += sign * g * oi * spot * spot * 0.1
+                                gex_any = True
+                        if sign > 0:
+                            call_oi_total += float(df["openInterest"].sum())
+                            call_vol += float(df["volume"].sum())
+                        else:
+                            put_oi_total += float(df["openInterest"].sum())
+                            put_vol += float(df["volume"].sum())
+                if call_oi_total > 0:
+                    out["pcOi"] = round(put_oi_total / call_oi_total, 2)
                 if call_vol > 0:
                     out["pcVol"] = round(put_vol / call_vol, 2)
+                if gex_any:
+                    out["gexMUsd"] = round(gex / 1e6, 0)
+                if call_walls:
+                    out["callWall"] = max(call_walls, key=call_walls.get)
+                if put_walls:
+                    out["putWall"] = max(put_walls, key=put_walls.get)
         except Exception:
             pass  # 期权链失败不拖累做空数据
         return out or None
