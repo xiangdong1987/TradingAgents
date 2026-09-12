@@ -13,6 +13,8 @@
     </array>
     <key>WorkingDirectory</key>
     <string>/Volumes/external/code/ai/projects/TradingAgents</string>
+    <key>RunAtLoad</key>
+    <true/>
     <key>StartInterval</key>
     <integer>900</integer>
     <key>StandardOutPath</key>

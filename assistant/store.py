@@ -21,6 +21,7 @@ class Store(Protocol):
     def get_positions(self) -> list[dict]: ...
     def get_portfolio_meta(self) -> dict: ...
     def get_brief(self, date_str: str) -> dict | None: ...
+    def latest_brief(self) -> tuple[str, dict] | None: ...
     def save_brief(self, date_str: str, data: dict) -> None: ...
     def merge_brief_quotes(self, date_str: str, quotes: dict) -> None: ...
     def get_calendar(self) -> dict | None: ...
@@ -98,6 +99,13 @@ class MemoryStore:
     def get_brief(self, date_str: str) -> dict | None:
         doc = self._briefs.get(date_str)
         return dict(doc) if doc else None
+
+    def latest_brief(self) -> tuple[str, dict] | None:
+        """最新的一份日报（date 降序第一条），无则 None。"""
+        if not self._briefs:
+            return None
+        date_str = max(self._briefs)
+        return date_str, dict(self._briefs[date_str])
 
     def save_brief(self, date_str: str, data: dict) -> None:
         self._briefs[date_str] = dict(data)
@@ -334,6 +342,14 @@ class FirestoreStore:
     def get_brief(self, date_str: str) -> dict | None:
         snap = self._db.collection("briefs").document(date_str).get()
         return snap.to_dict() if snap.exists else None
+
+    def latest_brief(self) -> tuple[str, dict] | None:
+        """最新的一份日报（date 降序第一条），无则 None。"""
+        docs = list(self._db.collection("briefs")
+                    .order_by("date", direction="DESCENDING").limit(1).stream())
+        if not docs:
+            return None
+        return docs[0].id, (docs[0].to_dict() or {})
 
     def save_brief(self, date_str: str, data: dict) -> None:
         self._db.collection("briefs").document(date_str).set(data)

@@ -198,7 +198,9 @@ def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
 
     Tickers added after a brief was generated have no price in the client
     until the next brief; this tops them up cheaply (no LLM call). Looks
-    back up to ``lookback_days`` for the latest brief doc (weekends). Returns
+    back up to ``lookback_days`` for the latest brief doc (weekends), and
+    falls back to the newest brief of **any** age when日报停摆多日——否则
+    App 里的价格会一直冻在最后一份日报上，刷新按钮也救不回来。Returns
     the number of tickers added.
     """
     at_cost: set[str] = set()
@@ -219,7 +221,11 @@ def top_up_quotes(store, today: str, *, fetch_quote=get_quote,
             brief_date = candidate
             break
     if brief is None:
-        return 0
+        # 回溯窗口内没有日报（停摆多日）→ 退到最新的那一份，照样把价格补进去
+        latest = store.latest_brief()
+        if latest is None:
+            return 0
+        brief_date, brief = latest
 
     existing = {} if force else (brief.get("quotes") or {})
     added = {}

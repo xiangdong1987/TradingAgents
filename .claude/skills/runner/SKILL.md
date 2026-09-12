@@ -6,8 +6,14 @@ description: 启动/停止/查看理财助手的 assistant runner（消费 Fires
 # Assistant Runner 启停
 
 runner 是理财助手的唯一后台执行器：App 里所有按钮（分析、刷新行情、提问）都只是往
-Firestore `jobs` 集合排队，**必须有一个 runner 进程在跑才会真正执行**。用户没装
-launchd（刻意决定，手动触发），所以由本技能代管进程。
+Firestore `jobs` 集合排队，**必须有一个 runner 进程在跑才会真正执行**。
+
+**2026-09-12 起已装 launchd**（`~/Library/LaunchAgents/com.tradingagents.assistant.plist`，
+登录即跑 + 每 15 分钟一轮 once 模式）。装它的起因：靠手动 watch 模式时 runner 极少在
+22:30 还活着，日报连续十天没生成、App 价格冻在旧日报上。
+
+**因此默认不要再起 watch 模式**——会和 launchd 双消费者。`/runner` 现在应先查 launchd
+状态；只有在调试、或用户明确要求常驻时才起 watch（起之前先 `launchctl bootout`）。
 
 每轮 wake-up 依次做：僵尸任务清理 → 消费用户排队的 jobs（deep_analysis / daily_brief /
 refresh_quotes / chat）→ 按 watchlist 规划定时任务（交易日日报、每周深度分析）→ 行情补齐
@@ -21,7 +27,26 @@ refresh_quotes / chat）→ 按 watchlist 规划定时任务（交易日日报�
 - 日志：`/tmp/tradingagents-runner-watch.log`
 - watch 默认间隔 120 秒；用户说「每 N 秒」就传 `--watch N`
 
-## /runner —— 常驻 watch 模式（默认动作）
+## /runner —— 默认动作：查 launchd 状态
+
+```bash
+launchctl print gui/$(id -u)/com.tradingagents.assistant 2>/dev/null \
+  | grep -E "state = |runs = |last exit code" | head -3
+grep "wake-up complete" /tmp/tradingagents-assistant.err.log | tail -1
+```
+
+`state = running/waiting` + 最近一条 wake-up 时间在 15 分钟内 = 一切正常，直接回报即可。
+没有输出说明 agent 没装或被卸载，按下面「launchd 安装」重装。
+
+卸载/重装：
+
+```bash
+launchctl bootout gui/$(id -u)/com.tradingagents.assistant
+cp scripts/com.tradingagents.assistant.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tradingagents.assistant.plist
+```
+
+## 常驻 watch 模式（仅调试用，先停 launchd）
 
 先查有没有活着的实例，避免双消费者。**以 pgrep 实际进程为准**（别只信 pid 文件：
 上个会话或用户手动起的 runner 不会写 pid 文件，漏检就会双消费）：

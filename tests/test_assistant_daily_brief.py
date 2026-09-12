@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from assistant.daily_brief import generate_daily_brief
+from assistant.daily_brief import generate_daily_brief, top_up_quotes
 from assistant.store import MemoryStore
 from assistant.quotes import QuoteUnavailable
 
@@ -564,3 +564,38 @@ def test_brief_option_face_negative_zero_normalization():
             break
     else:
         raise AssertionError("期权面: line not found")
+
+
+def test_top_up_falls_back_to_latest_brief_when_older_than_lookback():
+    """日报停摆多日后，刷新行情仍要能把最新价写进最近那份日报。
+
+    回归 2026-09-12 的线上故障：最近日报是 09-02，超出 3 天回溯窗口，
+    刷新按钮一次取价请求都不发、静默返回 0，App 里的价格冻在十天前。
+    """
+    store = make_store()                       # watch=NVDA, 持仓=AAPL
+    store.save_brief("2026-09-02", {
+        "date": "2026-09-02", "markdownZh": "x", "tickers": ["NVDA", "AAPL"],
+        "createdAt": "2026-09-02T20:00:00+00:00",
+        "quotes": {"NVDA": {"close": 228.45, "pctChange": 1.8}},
+    })
+    fetched = []
+
+    def q(t):
+        fetched.append(t)
+        return {"ticker": t, "close": 218.29, "prevClose": 218.36,
+                "pctChange": -0.03}
+
+    n = top_up_quotes(store, "2026-09-12", fetch_quote=q, force=True)
+    assert n >= 2 and "NVDA" in fetched and "AAPL" in fetched
+    merged = store.get_brief("2026-09-02")["quotes"]
+    assert merged["NVDA"]["close"] == 218.29      # 旧价被最新价覆盖
+
+
+def test_top_up_returns_zero_when_no_brief_at_all():
+    """一份日报都没有时保持原状（无处可写），不抛错。"""
+    store = make_store()
+    assert top_up_quotes(store, "2026-09-12",
+                         fetch_quote=lambda t: {"ticker": t, "close": 1.0,
+                                                "prevClose": 1.0,
+                                                "pctChange": 0.0},
+                         force=True) == 0
