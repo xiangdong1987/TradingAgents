@@ -32,6 +32,7 @@ dependencies = [
     "typing-extensions>=4.14.0",
     "yfinance>=1.4.1",
     "firebase-admin>=6.5.0",
+    "mcp>=1.2,<2",
 ]
 
 [project.optional-dependencies]

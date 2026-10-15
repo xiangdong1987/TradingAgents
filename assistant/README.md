@@ -110,3 +110,49 @@ job、按 watchlist 规划到期的日报/深度分析 job、复盘到期建议�
 ## Flutter 客户端（app/）
 
 app/ 是 Flutter 客户端（Android + macOS）；`cd app && flutter run` 运行；换 Firebase 项目时用 `flutterfire configure --project=<id> --platforms=android,macos` 重新生成 lib/firebase_options.dart；测试 `flutter test`。完整部署流程见上述各步骤。
+
+## MCP 服务端（让外部 AI 助手读取理财数据）
+
+`assistant/mcp_server.py` 用官方 `mcp` 包的 FastMCP 暴露本助手的 Firestore 数据，复用 `assistant/store.py` 与
+`assistant/quotes.py`。依赖 `mcp>=1.2,<2`（2.x 把 FastMCP 改名了，故固定 1.x），随 `pip install -e .` 安装。
+凭据与 runner 相同：`~/.tradingagents/firebase-service-account.json`（或 `TRADINGAGENTS_FIREBASE_CREDENTIALS`）。
+
+**工具**（除 `request_deep_analysis` 外全部只读）：
+
+| 工具 | 说明 |
+| --- | --- |
+| `list_watchlist` | 自选股 |
+| `list_positions` | 持仓（`positions` 集合）+ 现金/币种（`meta/portfolio`） |
+| `get_latest_brief` / `get_brief(date)` | 最新日报 / 指定日期（YYYY-MM-DD）日报 |
+| `get_ticker_analysis(ticker, limit=3, include_sections=false)` | 某股最近的深度分析（默认只含结论章节）+ 全部建议 |
+| `list_suggestion_reviews(limit=20)` | 已复盘的建议（含 `outcomePct`） |
+| `get_quote(ticker)` | 实时报价（含 ISIN 债券/基金） |
+| `request_deep_analysis(ticker)` | **唯一写操作**：写入 `jobs`（`type=deep_analysis, status=queued, requestedBy=mcp`），由 runner 执行 |
+
+**启动**：
+
+```bash
+.venv/bin/python -m assistant.mcp_server                 # stdio（Claude Desktop 等本地客户端）
+.venv/bin/python -m assistant.mcp_server --http          # streamable HTTP，默认 http://127.0.0.1:8765/mcp
+.venv/bin/python -m assistant.mcp_server --http --port 9000
+```
+
+HTTP 模式默认只监听回环地址且**没有鉴权**；`--host` 改成非回环地址前请自行加反向代理/鉴权，
+否则同网段任何人都能读你的持仓。
+
+**Claude Desktop 配置**（`~/Library/Application Support/Claude/claude_desktop_config.json`，路径换成你的仓库绝对路径）：
+
+```json
+{
+  "mcpServers": {
+    "wealth-assistant": {
+      "command": "/Volumes/external/code/ai/projects/TradingAgents/.venv/bin/python",
+      "args": ["-m", "assistant.mcp_server"],
+      "cwd": "/Volumes/external/code/ai/projects/TradingAgents"
+    }
+  }
+}
+```
+
+**其他 MCP 客户端**：stdio 客户端用同样的 command/args；支持 HTTP 的客户端先启动 `--http`，再指向
+`http://127.0.0.1:8765/mcp`（Claude Code：`claude mcp add --transport http wealth-assistant http://127.0.0.1:8765/mcp`）。

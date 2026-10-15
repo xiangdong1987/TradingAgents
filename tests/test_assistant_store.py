@@ -81,3 +81,19 @@ def test_requeue_running_jobs():
     assert s.requeue_running_jobs() == 1
     assert s.get_job(j1)["status"] == "queued"
     assert s.get_job(j2)["status"] == "done"
+
+
+def test_analyses_for_ticker_newest_first_and_limited():
+    s = MemoryStore()
+    for d in ("2026-07-01", "2026-07-08"):
+        s.save_analysis({"ticker": "NVDA", "createdAt": d + "T00:00:00+00:00"})
+    s.save_analysis({"ticker": "AAPL", "createdAt": "2026-07-09T00:00:00+00:00"})
+    got = s.analyses_for_ticker("NVDA", limit=1)
+    assert [a["createdAt"][:10] for a in got] == ["2026-07-08"]
+
+
+def test_reviewed_suggestions_only_with_outcome():
+    s = MemoryStore()
+    s.save_suggestion({"ticker": "A", "status": "accepted", "outcomePct": 1.0, "reviewedAt": "2026-07-02"})
+    s.save_suggestion({"ticker": "B", "status": "accepted"})
+    assert [x["ticker"] for x in s.reviewed_suggestions()] == ["A"]
