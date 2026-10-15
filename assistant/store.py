@@ -31,6 +31,7 @@ class Store(Protocol):
     def recent_analyses(self, limit: int = 6) -> list[dict]: ...
     def save_analysis(self, data: dict) -> str: ...
     def get_analysis(self, analysis_id: str) -> dict | None: ...
+    def analyses_for_ticker(self, ticker: str, limit: int = 3) -> list[dict]: ...
     def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None: ...
     def all_analyses(self) -> list[dict]: ...
     def merge_analysis_fields(self, analysis_id: str, fields: dict) -> None: ...
@@ -47,6 +48,7 @@ class Store(Protocol):
     def suggestions_due_review(self, cutoff_iso: str) -> list[dict]: ...
     def pending_suggestions(self) -> list[dict]: ...
     def suggestions_for_ticker(self, ticker: str) -> list[dict]: ...
+    def reviewed_suggestions(self, limit: int = 20) -> list[dict]: ...
     def get_strategy_config(self) -> dict: ...
     def get_policy_config(self) -> dict: ...
     def has_job_today(self, jtype: str, date_str: str, strategy: str | None = None) -> bool: ...
@@ -151,6 +153,12 @@ class MemoryStore:
         doc = self._analyses.get(analysis_id)
         return dict(doc) if doc is not None else None
 
+    def analyses_for_ticker(self, ticker: str, limit: int = 3) -> list[dict]:
+        docs = [{"id": aid, **a} for aid, a in self._analyses.items()
+                if a.get("ticker") == ticker]
+        docs.sort(key=lambda a: a.get("createdAt", ""), reverse=True)
+        return docs[:limit]
+
     def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None:
         doc = self._analyses[analysis_id]
         merged = dict(doc.get("sectionsZh") or {})
@@ -238,6 +246,12 @@ class MemoryStore:
     def suggestions_for_ticker(self, ticker: str) -> list[dict]:
         return [{"id": sid, **s} for sid, s in self._suggestions.items()
                 if s.get("ticker") == ticker]
+
+    def reviewed_suggestions(self, limit: int = 20) -> list[dict]:
+        out = [{"id": sid, **s} for sid, s in self._suggestions.items()
+               if "outcomePct" in s]
+        out.sort(key=lambda s: s.get("reviewedAt", ""), reverse=True)
+        return out[:limit]
 
     # --- strategies ---
     def seed_strategy_config(self, cfg: dict) -> None:
@@ -390,6 +404,13 @@ class FirestoreStore:
         snap = self._db.collection("analyses").document(analysis_id).get()
         return snap.to_dict() if snap.exists else None
 
+    def analyses_for_ticker(self, ticker: str, limit: int = 3) -> list[dict]:
+        # 纯等值查询（无需复合索引），按 createdAt 在内存里排序
+        q = self._db.collection("analyses").where("ticker", "==", ticker)
+        docs = [{"id": d.id, **d.to_dict()} for d in q.stream()]
+        docs.sort(key=lambda a: a.get("createdAt", ""), reverse=True)
+        return docs[:limit]
+
     def merge_analysis_sections_zh(self, analysis_id: str, sections: dict) -> None:
         self._db.collection("analyses").document(analysis_id).set(
             {"sectionsZh": sections}, merge=True)
@@ -472,6 +493,14 @@ class FirestoreStore:
     def suggestions_for_ticker(self, ticker: str) -> list[dict]:
         q = self._db.collection("suggestions").where("ticker", "==", ticker)
         return [{"id": snap.id, **snap.to_dict()} for snap in q.stream()]
+
+    def reviewed_suggestions(self, limit: int = 20) -> list[dict]:
+        # 与 suggestions_due_review 同样的「in + 内存过滤」模式，避免复合索引
+        q = self._db.collection("suggestions").where("status", "in", ["accepted", "dismissed"])
+        out = [{"id": snap.id, **snap.to_dict()} for snap in q.stream()]
+        out = [s for s in out if "outcomePct" in s]
+        out.sort(key=lambda s: s.get("reviewedAt", ""), reverse=True)
+        return out[:limit]
 
     # --- strategies ---
     def get_strategy_config(self) -> dict:
