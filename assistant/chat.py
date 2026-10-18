@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timedelta
 
 from assistant.lang import BILINGUAL_INSTRUCTION, split_bilingual
+from assistant.principles import load_principles_for_prompt
 from assistant.store import utc_now_iso
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,9 @@ _PROMPT = """你是用户的私人投资研究助手。基于下面的真实组�
 - 若信息不足请明说缺什么；
 - 结尾用一句话提醒：以上是研究参考，交易请自行决策（英文版用对应英文表述）。
 {bilingual}
+
+# 投资理念
+{principles}
 
 # 组合快照
 {context}
@@ -75,8 +79,10 @@ def answer_chat(store, llm, chat_id: str, today: str) -> None:
         raise ValueError(f"chat {chat_id} not found")
     try:
         context = build_context(store, today)
+        principles_text = load_principles_for_prompt()
         reply = llm.invoke(_PROMPT.format(context=context,
                                           bilingual=BILINGUAL_INSTRUCTION,
+                                          principles=principles_text,
                                           question=chat["question"])).content
         zh, en = split_bilingual(reply)
         store.update_chat(chat_id, {"answer": zh, "answerEn": en,
