@@ -13,6 +13,7 @@ import logging
 import re
 
 from assistant import policy
+from assistant.principles import load_principles_for_prompt
 from assistant.quotes import get_quote
 from assistant.store import utc_now_iso
 
@@ -24,6 +25,8 @@ _PROMPT = """你是一位重视风控的组合经理。引擎对 {ticker} 的最
 
 仓位纪律（你的建议必须落在这些约束内，否则会被系统钳制）:
 {constraints}
+
+{principles}
 
 请给出一条具体操作建议，只输出 JSON（不要 markdown 代码块）:
 {{"action": "buy|add|trim|sell|hold", "targetWeightPct": <目标仓位百分比数字或null>, "rationale": "<一段简体中文理由>", "rationaleEn": "<the same rationale in English>"}}
@@ -113,10 +116,12 @@ def generate_suggestion(store, llm, ticker: str, decision: str, analysis_id: str
     weight = (ticker_value / total * 100) if total else 0.0
     holding_desc = f"{pos['shares']} 股 @ 成本 {pos['avgCost']}" if pos else "无持仓"
 
+    principles_text = load_principles_for_prompt()
     reply = llm.invoke(_PROMPT.format(
         ticker=ticker, decision=decision, total=total, cash=cash_eur,
         holding_desc=holding_desc, weight=round(weight, 1), price=price,
         constraints=_constraints_text(snap, ticker),
+        principles=principles_text,
     )).content
     parsed = _parse_reply(reply, decision)
 
