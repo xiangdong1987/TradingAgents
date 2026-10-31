@@ -103,6 +103,11 @@ def generate_suggestion(store, llm, ticker: str, decision: str, analysis_id: str
     except Exception:
         logger.warning("EURUSD rate unavailable; policy gates skipped for %s", ticker)
 
+    analysis = store.get_analysis(analysis_id) if analysis_id else {}
+    sections = analysis.get("sections", {}) if analysis else {}
+    valuation = sections.get("valuation")
+    trade_date = analysis.get("tradeDate") if analysis else utc_now_iso()[:10]
+
     meta_doc = store.get_portfolio_meta()
     cash = meta_doc.get("cash", 0.0)
     snap = policy.snapshot(list(positions.values()), cash,
@@ -116,11 +121,20 @@ def generate_suggestion(store, llm, ticker: str, decision: str, analysis_id: str
     weight = (ticker_value / total * 100) if total else 0.0
     holding_desc = f"{pos['shares']} 股 @ 成本 {pos['avgCost']}" if pos else "无持仓"
 
+    valuation_text = ""
+    if valuation:
+        bear = valuation.get("intrinsic_bear", 0)
+        base = valuation.get("intrinsic_base", 0)
+        bull = valuation.get("intrinsic_bull", 0)
+        implied = valuation.get("implied_growth_pct", 0)
+        margin = (base - price) / base * 100 if base > 0 else 0
+        valuation_text = f"\nDCF 估值：熊市 {bear:.2f}、中性 {base:.2f}、牛市 {bull:.2f}；当前价隐含增速 {implied:.1f}%；安全边际 {margin:+.1f}%。"
+
     principles_text = load_principles_for_prompt()
     reply = llm.invoke(_PROMPT.format(
         ticker=ticker, decision=decision, total=total, cash=cash_eur,
         holding_desc=holding_desc, weight=round(weight, 1), price=price,
-        constraints=_constraints_text(snap, ticker),
+        constraints=_constraints_text(snap, ticker) + valuation_text,
         principles=principles_text,
     )).content
     parsed = _parse_reply(reply, decision)
@@ -141,7 +155,24 @@ def generate_suggestion(store, llm, ticker: str, decision: str, analysis_id: str
         target = clamped_target
 
         if parsed["action"] in ("buy", "add") and price > 0:
-            # 三重取小：风险定股数 → 过组合级闸 → 现金可买
+            if analysis:
+                valuation_verdict = policy.check_valuation(
+                    ticker, price, valuation, trade_date, snap.p
+                )
+                if valuation_verdict and valuation_verdict.blocked:
+                    meta["blocked"] = True
+                    meta["blockedBy"] = valuation_verdict.binding
+                    note_zh = f"⛔ {valuation_verdict.reason}"
+                    note_en = f"⛔ {valuation_verdict.reason_en}"
+                    rationale = f"{rationale}\n\n{note_zh}"
+                    rationale_en = f"{rationale_en}\n\n{note_en}".strip()
+                    return store.save_suggestion({
+                        "ticker": ticker, "analysisId": analysis_id,
+                        "action": parsed["action"], "targetWeightPct": target,
+                        "shares": 0, "rationale": rationale, "rationaleEn": rationale_en,
+                        "meta": meta, "createdAt": utc_now_iso(),
+                    })
+            
             stop = round(price * (1 - snap.p["defaultStopPct"] / 100), 4)
             want = policy.risk_shares(snap, ticker, price, stop)
             verdict = policy.check_buy(snap, ticker, want, price, stop_native=stop)
@@ -160,6 +191,13 @@ def generate_suggestion(store, llm, ticker: str, decision: str, analysis_id: str
                     meta["clampedBy"] = verdict.binding
                     rationale = f"{rationale}\n\n⚠️ {verdict.reason}"
                     rationale_en = f"{rationale_en}\n\n⚠️ {verdict.reason_en}".strip()
+        
+        if pos and price > 0:
+            trim_hint = policy.check_trim_at_target(ticker, price, valuation, snap.p)
+            if trim_hint:
+                meta["trimHint"] = True
+                rationale = f"{rationale}\n\n💡 {trim_hint}"
+                rationale_en = f"{rationale_en}\n\n💡 {trim_hint}".strip()
 
     return store.save_suggestion({
         "ticker": ticker,

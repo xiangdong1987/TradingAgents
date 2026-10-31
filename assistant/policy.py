@@ -36,6 +36,9 @@ DEFAULTS: dict = {
     "issuerWhitelist": ["IT0005696320"],   # 存量豁免（只约束新买入）
     "maxTotalRiskPct": 5.0,       # 在场风险头寸的理论止损损失合计上限
     "defaultStopPct": 8.0,        # 无 N 时的兜底止损（-8%）
+    "minMarginOfSafetyPct": 25.0, # DCF 估值安全边际（买入价格 ≤ 中性价值 × 75%）
+    "valuationMaxAgeDays": 100,   # 估值过期天数（约一个季度）
+    "trimAboveBullPct": 95.0,     # 达到牛市估值的 95% 时触发 trim 提示
     "layers": {"defensive": [60.0, 85.0], "core": [10.0, 25.0],
                "satellite": [0.0, 15.0]},
     # 底层美元资产比例（%）。EUR 上市但底层是美股的宽基要写在这里，
@@ -234,6 +237,7 @@ _LIMIT_LABELS = {
     "usd": ("美元敞口", "USD exposure"),
     "issuer": ("单一发行人", "single issuer"),
     "risk": ("总风险预算", "total risk budget"),
+    "valuation": ("估值安全边际", "valuation margin of safety"),
 }
 
 
@@ -393,3 +397,107 @@ def risk_shares(snap: Snapshot, ticker: str, price_native: float,
     budget_eur = snap.risk_base_eur() * float(p["riskPerTradePct"]) / 100
     budget_native = snap.to_native(ticker, budget_eur)
     return math.floor(budget_native / per_share_risk)
+
+
+# ---------------------------------------------------------------------------
+# 估值闸（DCF valuation gate）
+# ---------------------------------------------------------------------------
+
+def check_valuation(ticker: str, price: float, valuation: dict | None, 
+                    valuation_date: str, p: dict) -> BuyVerdict | None:
+    """对卫星层（个股）的买入/加仓检查 DCF 估值安全边际。
+    
+    核心/防守层（指数、ETF、债券）跳过此闸。卫星层个股必须满足：
+    1. 有估值数据（intrinsic_base）
+    2. 估值未过期（距今 < valuationMaxAgeDays）
+    3. 当前价格 ≤ 中性估值 × (1 - minMarginOfSafetyPct / 100)
+    
+    Args:
+        ticker: 标的代码
+        price: 当前价格
+        valuation: 估值数据字典（包含 intrinsic_bear/base/bull, valuation_date 等）
+        valuation_date: 当前分析日期（yyyy-mm-dd）
+        p: policy config
+    
+    Returns:
+        BuyVerdict with allowed_shares=0 if blocked, or None if passed
+    """
+    from datetime import datetime, timedelta
+    
+    layer = layer_of(ticker, None, p)
+    if layer != "satellite":
+        return None
+    
+    if not valuation or "intrinsic_base" not in valuation:
+        zh = "该个股缺少 DCF 估值，无法判断安全边际。按原则「没有自己的估值计算不动手」，暂不买入。"
+        en = "No DCF valuation available for this stock. Per principles 'no trade without our own valuation', blocking purchase."
+        return BuyVerdict(0, 0, "valuation", zh, en)
+    
+    val_date_str = valuation.get("valuation_date")
+    if not val_date_str:
+        zh = "估值数据缺少日期，无法判断是否过期。"
+        en = "Valuation data missing date; cannot determine if stale."
+        return BuyVerdict(0, 0, "valuation", zh, en)
+    
+    try:
+        val_date = datetime.strptime(val_date_str, "%Y-%m-%d")
+        curr_date = datetime.strptime(valuation_date, "%Y-%m-%d")
+        days_old = (curr_date - val_date).days
+        
+        max_age = int(p.get("valuationMaxAgeDays", DEFAULTS["valuationMaxAgeDays"]))
+        if days_old > max_age:
+            zh = f"估值已过期 {days_old} 天（上限 {max_age} 天），需要更新估值后才能买入。"
+            en = f"Valuation is {days_old} days old (max {max_age}), requires refresh before purchase."
+            return BuyVerdict(0, 0, "valuation", zh, en)
+    except ValueError as e:
+        logger.warning(f"Invalid valuation date format: {e}")
+        zh = "估值日期格式错误，无法判断是否过期。"
+        en = "Invalid valuation date format."
+        return BuyVerdict(0, 0, "valuation", zh, en)
+    
+    intrinsic_base = valuation["intrinsic_base"]
+    min_margin = float(p.get("minMarginOfSafetyPct", DEFAULTS["minMarginOfSafetyPct"])) / 100
+    max_price = intrinsic_base * (1 - min_margin)
+    
+    if price > max_price:
+        actual_margin = (intrinsic_base - price) / intrinsic_base * 100
+        zh = (f"当前价格 {price:.2f} 高于安全边际线 {max_price:.2f}"
+              f"（中性估值 {intrinsic_base:.2f} × {1-min_margin:.0%}）。"
+              f"实际安全边际 {actual_margin:+.1f}%，不足要求的 {min_margin*100:.0f}%。")
+        en = (f"Current price {price:.2f} exceeds safety margin {max_price:.2f} "
+              f"(base intrinsic value {intrinsic_base:.2f} × {1-min_margin:.0%}). "
+              f"Actual margin {actual_margin:+.1f}%, below required {min_margin*100:.0f}%.")
+        return BuyVerdict(0, 0, "valuation", zh, en)
+    
+    return None
+
+
+def check_trim_at_target(ticker: str, price: float, valuation: dict | None, p: dict) -> str | None:
+    """检查是否接近牛市估值目标，返回 trim 提示（非强制）。
+    
+    这不是硬闸，而是白圭「仁：不赚最后一个铜板」的提示。
+    达到牛市估值的 trimAboveBullPct 时，建议按计划减仓。
+    
+    Returns:
+        提示文本（中英文），或 None 如果未达目标
+    """
+    layer = layer_of(ticker, None, p)
+    if layer != "satellite":
+        return None
+    
+    if not valuation or "intrinsic_bull" not in valuation:
+        return None
+    
+    intrinsic_bull = valuation["intrinsic_bull"]
+    trim_threshold_pct = float(p.get("trimAboveBullPct", DEFAULTS["trimAboveBullPct"])) / 100
+    trim_price = intrinsic_bull * trim_threshold_pct
+    
+    if price >= trim_price:
+        achieved_pct = price / intrinsic_bull * 100
+        zh = (f"当前价格 {price:.2f} 已达牛市估值 {intrinsic_bull:.2f} 的 {achieved_pct:.0f}%"
+              f"（目标线 {trim_threshold_pct*100:.0f}%），建议按计划 trim 不追顶。")
+        en = (f"Current price {price:.2f} has reached {achieved_pct:.0f}% of bull-case value "
+              f"{intrinsic_bull:.2f} (target {trim_threshold_pct*100:.0f}%), consider trimming per plan.")
+        return f"{zh}\n{en}"
+    
+    return None
