@@ -241,9 +241,14 @@ def run_dcf(a: DcfAssumptions) -> DcfResult:
 def scenarios(base: DcfAssumptions) -> dict[str, DcfResult]:
     """Generate bear/base/bull scenarios around the base assumptions.
     
-    Bear: -3pp growth, +1pp WACC, -3pp margin
+    Bear: -3pp growth, +1pp WACC, -3pp margin (floor at 5%)
     Base: as provided
-    Bull: +3pp growth, -1pp WACC, +3pp margin
+    Bull: +3pp growth, -1pp WACC, +3pp margin (cap at 80%)
+    
+    Note: Bear scenario margins are floored at 5% to prevent negative margins.
+    If your base margin_start or margin_end is already near 5%, the bear scenario
+    will have a smaller delta than configured. To preserve the full -3pp shift,
+    ensure base margins are ≥ 8%.
     
     Returns dict with keys 'bear', 'base', 'bull'.
     """
@@ -301,13 +306,15 @@ def sensitivity_table(base: DcfAssumptions, row_param: str = 'wacc',
     
     Args:
         base: Base case assumptions
-        row_param: 'wacc' (varies WACC) or 'margin' (varies operating margin)
+        row_param: 'wacc' (varies WACC initial, preserving initial-stable spread) 
+                   or 'margin' (varies operating margin)
         col_param: 'growth' (varies revenue growth) or 'terminal_g' (varies terminal growth)
     
     Returns:
         Dict with 'rows', 'cols', 'values' (5×5 array of value per share)
     """
     if row_param == 'wacc':
+        wacc_spread = base.wacc_initial - base.wacc_stable
         row_values = [
             base.wacc_initial - 0.015,
             base.wacc_initial - 0.0075,
@@ -330,13 +337,14 @@ def sensitivity_table(base: DcfAssumptions, row_param: str = 'wacc',
     
     if col_param == 'growth':
         avg_growth = sum(base.revenue_growth_rates) / len(base.revenue_growth_rates)
-        col_values = [
-            avg_growth - 0.04,
-            avg_growth - 0.02,
-            avg_growth,
-            avg_growth + 0.02,
-            avg_growth + 0.04,
+        growth_deltas = [
+            -0.04,
+            -0.02,
+            0.00,
+            +0.02,
+            +0.04,
         ]
+        col_values = [avg_growth + d for d in growth_deltas]
         col_label = 'Revenue Growth'
     elif col_param == 'terminal_g':
         col_values = [
@@ -353,26 +361,57 @@ def sensitivity_table(base: DcfAssumptions, row_param: str = 'wacc',
     values = []
     for row_val in row_values:
         row_results = []
-        for col_val in col_values:
-            test_assumptions = DcfAssumptions(
-                base_revenue=base.base_revenue,
-                revenue_growth_rates=[col_val if col_param == 'growth' else g 
-                                     for g in base.revenue_growth_rates],
-                operating_margin_start=base.operating_margin_start,
-                operating_margin_end=row_val if row_param == 'margin' else base.operating_margin_end,
-                margin_convergence_years=base.margin_convergence_years,
-                tax_rate_effective=base.tax_rate_effective,
-                tax_rate_marginal=base.tax_rate_marginal,
-                sales_to_capital=base.sales_to_capital,
-                wacc_initial=row_val if row_param == 'wacc' else base.wacc_initial,
-                wacc_stable=row_val if row_param == 'wacc' else base.wacc_stable,
-                terminal_growth_rate=col_val if col_param == 'terminal_g' else base.terminal_growth_rate,
-                stable_roic=base.stable_roic,
-                net_cash=base.net_cash,
-                shares_outstanding=base.shares_outstanding,
-                risk_free_rate=base.risk_free_rate,
-                segment_revenues=base.segment_revenues,
-            )
+        for i, col_val in enumerate(col_values):
+            if row_param == 'wacc':
+                if col_param == 'growth':
+                    growth_delta = growth_deltas[i]
+                    adjusted_growth = [max(g + growth_delta, -0.10) for g in base.revenue_growth_rates]
+                else:
+                    adjusted_growth = base.revenue_growth_rates
+                
+                test_assumptions = DcfAssumptions(
+                    base_revenue=base.base_revenue,
+                    revenue_growth_rates=adjusted_growth if col_param == 'growth' else base.revenue_growth_rates,
+                    operating_margin_start=base.operating_margin_start,
+                    operating_margin_end=base.operating_margin_end,
+                    margin_convergence_years=base.margin_convergence_years,
+                    tax_rate_effective=base.tax_rate_effective,
+                    tax_rate_marginal=base.tax_rate_marginal,
+                    sales_to_capital=base.sales_to_capital,
+                    wacc_initial=row_val,
+                    wacc_stable=row_val - wacc_spread,
+                    terminal_growth_rate=col_val if col_param == 'terminal_g' else base.terminal_growth_rate,
+                    stable_roic=base.stable_roic,
+                    net_cash=base.net_cash,
+                    shares_outstanding=base.shares_outstanding,
+                    risk_free_rate=base.risk_free_rate,
+                    segment_revenues=base.segment_revenues,
+                )
+            elif row_param == 'margin':
+                if col_param == 'growth':
+                    growth_delta = growth_deltas[i]
+                    adjusted_growth = [max(g + growth_delta, -0.10) for g in base.revenue_growth_rates]
+                else:
+                    adjusted_growth = base.revenue_growth_rates
+                
+                test_assumptions = DcfAssumptions(
+                    base_revenue=base.base_revenue,
+                    revenue_growth_rates=adjusted_growth if col_param == 'growth' else base.revenue_growth_rates,
+                    operating_margin_start=base.operating_margin_start,
+                    operating_margin_end=row_val,
+                    margin_convergence_years=base.margin_convergence_years,
+                    tax_rate_effective=base.tax_rate_effective,
+                    tax_rate_marginal=base.tax_rate_marginal,
+                    sales_to_capital=base.sales_to_capital,
+                    wacc_initial=base.wacc_initial,
+                    wacc_stable=base.wacc_stable,
+                    terminal_growth_rate=col_val if col_param == 'terminal_g' else base.terminal_growth_rate,
+                    stable_roic=base.stable_roic,
+                    net_cash=base.net_cash,
+                    shares_outstanding=base.shares_outstanding,
+                    risk_free_rate=base.risk_free_rate,
+                    segment_revenues=base.segment_revenues,
+                )
             
             result = run_dcf(test_assumptions)
             row_results.append(result.value_per_share)

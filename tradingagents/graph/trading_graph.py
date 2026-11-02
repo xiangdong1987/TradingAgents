@@ -27,6 +27,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_verified_market_snapshot,
     resolve_instrument_identity,
 )
+from tradingagents.agents.utils.valuation_tools import run_dcf_valuation
 from tradingagents.agents.utils.memory import TradingMemoryLog
 from tradingagents.dataflows.config import set_config
 from tradingagents.dataflows.utils import safe_ticker_component
@@ -223,6 +224,7 @@ class TradingAgentsGraph:
                     get_balance_sheet,
                     get_cashflow,
                     get_income_statement,
+                    run_dcf_valuation,
                 ]
             ),
         }

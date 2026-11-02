@@ -33,6 +33,7 @@ def _fetch_financial_data(ticker: str) -> dict:
         info = yf_ticker.info
         financials = yf_ticker.financials
         balance_sheet = yf_ticker.balance_sheet
+        quarterly_balance_sheet = yf_ticker.quarterly_balance_sheet
         cashflow = yf_ticker.cashflow
         
         ttm_revenue = info.get('totalRevenue', 0)
@@ -43,11 +44,27 @@ def _fetch_financial_data(ticker: str) -> dict:
         if not financials.empty and 'Operating Income' in financials.index:
             operating_income = financials.loc['Operating Income'].iloc[0]
         
-        net_debt = 0
-        if not balance_sheet.empty:
-            total_debt = balance_sheet.loc['Total Debt'].iloc[0] if 'Total Debt' in balance_sheet.index else 0
-            cash_equiv = balance_sheet.loc['Cash And Cash Equivalents'].iloc[0] if 'Cash And Cash Equivalents' in balance_sheet.index else 0
-            net_debt = total_debt - cash_equiv
+        bs = quarterly_balance_sheet if not quarterly_balance_sheet.empty else balance_sheet
+        
+        net_cash = 0
+        if not bs.empty:
+            cash = 0
+            if 'Cash And Cash Equivalents' in bs.index:
+                cash = bs.loc['Cash And Cash Equivalents'].iloc[0]
+            
+            short_term_investments = 0
+            if 'Short Term Investments' in bs.index:
+                short_term_investments = bs.loc['Short Term Investments'].iloc[0]
+            elif 'Other Short Term Investments' in bs.index:
+                short_term_investments = bs.loc['Other Short Term Investments'].iloc[0]
+            
+            total_debt = 0
+            if 'Total Debt' in bs.index:
+                total_debt = bs.loc['Total Debt'].iloc[0]
+            elif 'Long Term Debt' in bs.index and 'Current Debt' in bs.index:
+                total_debt = bs.loc['Long Term Debt'].iloc[0] + bs.loc['Current Debt'].iloc[0]
+            
+            net_cash = cash + short_term_investments - total_debt
         
         shares = info.get('sharesOutstanding', 0)
         if shares == 0:
@@ -58,7 +75,7 @@ def _fetch_financial_data(ticker: str) -> dict:
         return {
             'ttm_revenue': float(ttm_revenue) if ttm_revenue else 0,
             'operating_income': float(operating_income) if operating_income else 0,
-            'net_cash': -float(net_debt) if net_debt else 0,
+            'net_cash': float(net_cash) if net_cash else 0,
             'shares_outstanding': float(shares) if shares else 0,
             'current_price': float(current_price) if current_price else 0,
             'canonical': canonical,

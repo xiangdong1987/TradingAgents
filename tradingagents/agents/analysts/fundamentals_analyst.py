@@ -1,4 +1,5 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+import re
 
 from tradingagents.agents.utils.agent_utils import (
     get_balance_sheet,
@@ -9,6 +10,39 @@ from tradingagents.agents.utils.agent_utils import (
     get_language_instruction,
 )
 from tradingagents.agents.utils.valuation_tools import run_dcf_valuation
+
+
+def _extract_valuation_from_report(report: str) -> dict | None:
+    """Extract DCF valuation data from fundamentals report text.
+    
+    Returns dict with bear/base/bull values, implied_growth, and valuation_date,
+    or None if no DCF data found.
+    """
+    if "DCF 估值报告" not in report and "DCF Valuation" not in report:
+        return None
+    
+    valuation = {}
+    
+    bear_match = re.search(r"熊市.*?\$(\d+\.?\d*)", report, re.DOTALL)
+    base_match = re.search(r"中性.*?\$(\d+\.?\d*)", report, re.DOTALL)
+    bull_match = re.search(r"牛市.*?\$(\d+\.?\d*)", report, re.DOTALL)
+    
+    if bear_match:
+        valuation["intrinsic_bear"] = float(bear_match.group(1))
+    if base_match:
+        valuation["intrinsic_base"] = float(base_match.group(1))
+    if bull_match:
+        valuation["intrinsic_bull"] = float(bull_match.group(1))
+    
+    implied_match = re.search(r"隐含的.*?年收入增速.*?约为.*?(\d+\.?\d*)%", report)
+    if implied_match:
+        valuation["implied_growth_pct"] = float(implied_match.group(1))
+    
+    date_match = re.search(r"估值基准日.*?(\d{4}-\d{2}-\d{2})", report)
+    if date_match:
+        valuation["valuation_date"] = date_match.group(1)
+    
+    return valuation if valuation else None
 
 
 def create_fundamentals_analyst(llm):
@@ -71,10 +105,17 @@ def create_fundamentals_analyst(llm):
 
         if len(result.tool_calls) == 0:
             report = result.content
+        
+        valuation = _extract_valuation_from_report(result.content)
 
-        return {
+        return_dict = {
             "messages": [result],
             "fundamentals_report": report,
         }
+        
+        if valuation:
+            return_dict["valuation"] = valuation
+
+        return return_dict
 
     return fundamentals_analyst_node
