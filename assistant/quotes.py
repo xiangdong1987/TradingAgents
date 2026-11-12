@@ -228,6 +228,21 @@ def _borsa_fund_quote(isin: str, _fetch_html=_fetch_borsa_fund_html) -> dict:
     return {"ticker": isin, "close": close, "prevClose": prev, "pctChange": pct}
 
 
+# --- 主力意图诊断阈值（常量定义） ---
+_ZHULI_CMF_ACCUM_THRESHOLD = 0.10      # CMF > +0.10 视为吸筹倾向
+_ZHULI_CMF_DIST_THRESHOLD = -0.10      # CMF < -0.10 视为派发倾向
+_ZHULI_UPDOWN_VOL_ACCUM = 1.3          # 上涨日/下跌日量比 > 1.3 视为吸筹
+_ZHULI_UPDOWN_VOL_DIST = 0.77          # 上涨日/下跌日量比 < 0.77 视为派发
+_ZHULI_BIG_MOVE_PCT = 1.0              # 涨跌幅 >= 1% 触发放量上涨/下跌统计
+_ZHULI_SMALL_MOVE_PCT = 0.2            # 涨跌幅 >= 0.2% 且量超前日触发 IBD distribution day
+_ZHULI_VOL_BIG_MULT = 1.5              # 量 >= 1.5x 50日均量定义「放量」
+_ZHULI_VOL_SHRINK_MULT = 0.7           # 量 <= 0.7x 50日均量定义「缩量」
+_ZHULI_STAGNANT_VOL_MULT = 2.0         # 量 >= 2x 50日均量 + |涨跌| < 0.5% 触发滞涨
+_ZHULI_STAGNANT_CHG_PCT = 0.5          # 滞涨标准：价格摆动小于 0.5%
+_ZHULI_SHORT_WINDOW = 20               # 短期窗口（统计当前趋势）
+_ZHULI_LONG_WINDOW = 50                # 长期窗口（均量、均价基准）
+
+
 def get_money_flow(ticker: str, end_date: str, *,
                    _history=_yf_history_ohlc) -> dict | None:
     """个股量价资金流：量比 / MFI14 / OBV 5日方向 / 5日涨跌 %。
@@ -284,6 +299,241 @@ def get_money_flow(ticker: str, end_date: str, *,
             "obvTrend": obv_trend,
             "chg5dPct": round((bars[-1]["close"] - bars[-6]["close"])
                               / bars[-6]["close"] * 100, 2),
+        }
+    except Exception:
+        return None
+
+
+def get_zhuli_intent(ticker: str, end_date: str, *,
+                     _history=_yf_history_ohlc) -> dict | None:
+    """主力意图诊断（基于 OHLCV 的吸筹/派发启发式）。
+
+    针对日频 yfinance 数据，无 Level-2 / 龙虎榜。规则组合：
+    1. CMF-20（Chaikin Money Flow, 20日）：>+0.10 吸筹倾向，<-0.10 派发倾向。
+    2. A/D 线（Chaikin 累积/派发）20日斜率 vs 价格 20日变化：价格平/跌而 A/D 升 =
+       潜在吸筹（bullish divergence），价格升而 A/D 跌 = 潜在派发（bearish divergence）。
+    3. 近 20 日上涨日/下跌日成交量比：>1.3 吸筹，<0.77 派发。
+    4. 近 20 日模式统计（基于 50 日均量）：
+       - 放量上涨（涨 >=1% 且量 >=1.5x 均量）
+       - 派发日（跌 >=1% 且量 >=1.5x 均量；IBD-style，也含跌 >=0.2% 且量超前日）
+       - 缩量回调（跌日且量 <=0.7x 均量，同时价在 50日均线上方）
+    5. 最新一日特征：
+       - 放量滞涨（量 >=2x 均量但 |涨跌| <0.5%，接近 20日高点 → 可能派发）
+       - 地量企稳（量为 20日最低且价接近 20日低点）
+    6. 综合评分 [-100,100] + 标签（吸筹/偏吸筹/中性/偏派发/派发）+ 触发原因列表（中文）。
+
+    权重简化（docstring 记录逻辑）：
+    - CMF>0.10 → +30，CMF<-0.10 → -30
+    - A/D 看涨背离 → +20，A/D 看跌背离 → -20
+    - 上涨/下跌量比 >1.3 → +20，<0.77 → -20
+    - 放量上涨次数/20 × 20，派发日次数/20 × -20
+    - 缩量回调次数/20 × +10（健康回调）
+    - 放量滞涨（近 20日高点）→ -25
+    - 地量企稳（近 20日低点）→ +15
+
+    返回 {cmf20, adDivergence, upDownVolRatio, accumDays, distDays, lowVolPullbacks,
+           flags:[], score, label, reasons:[]} 或 None（ISIN / 数据不足 <60 根）。
+    绝不抛出。
+    """
+    if is_isin(ticker):
+        return None
+    try:
+        start = (datetime.strptime(end_date, "%Y-%m-%d")
+                 - timedelta(days=90)).strftime("%Y-%m-%d")
+        bars = [b for b in _history(ticker, start, end_date)
+                if b.get("volume") is not None and b["volume"] > 0]
+        if len(bars) < 60:
+            return None
+
+        # 提取序列（最近 60 根足够计算 50 日窗口 + 20 日统计）
+        closes = [b["close"] for b in bars]
+        highs = [b["high"] for b in bars]
+        lows = [b["low"] for b in bars]
+        volumes = [b["volume"] for b in bars]
+
+        # 均量（50日窗口）
+        if len(bars) < _ZHULI_LONG_WINDOW:
+            avg_vol_50 = sum(volumes) / len(volumes)
+        else:
+            avg_vol_50 = sum(volumes[-_ZHULI_LONG_WINDOW:]) / _ZHULI_LONG_WINDOW
+        if avg_vol_50 <= 0:
+            return None
+
+        # 均价（50日）
+        sma_50 = sum(closes[-_ZHULI_LONG_WINDOW:]) / _ZHULI_LONG_WINDOW
+
+        # ===== 1. CMF-20 (Chaikin Money Flow) =====
+        # CMF = sum(Money Flow Volume) / sum(Volume)
+        # MFV = ((C - L) - (H - C)) / (H - L) * Vol
+        window_20 = min(_ZHULI_SHORT_WINDOW, len(bars))
+        mfv_sum = 0.0
+        vol_sum = 0.0
+        for i in range(-window_20, 0):
+            h, l, c, v = highs[i], lows[i], closes[i], volumes[i]
+            if h - l > 0:
+                mfv_sum += ((c - l) - (h - c)) / (h - l) * v
+            vol_sum += v
+        cmf20 = mfv_sum / vol_sum if vol_sum > 0 else 0.0
+
+        # ===== 2. A/D 线背离 =====
+        # A/D[i] = A/D[i-1] + MFV[i]（上面 MFV 定义相同）
+        ad_line = [0.0]
+        for i in range(1, len(bars)):
+            h, l, c, v = highs[i], lows[i], closes[i], volumes[i]
+            if h - l > 0:
+                mfv = ((c - l) - (h - c)) / (h - l) * v
+            else:
+                mfv = 0.0
+            ad_line.append(ad_line[-1] + mfv)
+
+        # 20 日斜率对比（线性简化：首尾差）
+        ad_20_start = ad_line[-window_20]
+        ad_20_end = ad_line[-1]
+        ad_change = ad_20_end - ad_20_start
+
+        price_20_start = closes[-window_20]
+        price_20_end = closes[-1]
+        price_change_pct = (price_20_end - price_20_start) / price_20_start * 100
+
+        # 判定背离：价平/跌（<+3%）但 A/D 升 = 看涨背离；价升（>+3%）但 A/D 跌 = 看跌背离
+        ad_divergence = None
+        if price_change_pct < 3.0 and ad_change > 0:
+            ad_divergence = "bullish"
+        elif price_change_pct > 3.0 and ad_change < 0:
+            ad_divergence = "bearish"
+
+        # ===== 3. 上涨日/下跌日成交量比 =====
+        up_vol = 0.0
+        down_vol = 0.0
+        for i in range(-window_20, 0):
+            if i == -window_20:
+                continue  # 第一日无前日对比，跳过
+            if closes[i] > closes[i - 1]:
+                up_vol += volumes[i]
+            elif closes[i] < closes[i - 1]:
+                down_vol += volumes[i]
+        updown_vol_ratio = up_vol / down_vol if down_vol > 0 else (
+            999.0 if up_vol > 0 else 1.0)
+
+        # ===== 4. 模式统计（近 20 日） =====
+        accum_days = 0    # 放量上涨
+        dist_days = 0     # 派发日
+        low_vol_pullbacks = 0  # 缩量回调
+
+        for i in range(-window_20, 0):
+            chg_pct = (closes[i] - closes[i - 1]) / closes[i - 1] * 100 if i > -len(bars) else 0.0
+            vol = volumes[i]
+            prev_vol = volumes[i - 1] if i > -len(bars) else avg_vol_50
+
+            # 放量上涨
+            if chg_pct >= _ZHULI_BIG_MOVE_PCT and vol >= avg_vol_50 * _ZHULI_VOL_BIG_MULT:
+                accum_days += 1
+
+            # 派发日（IBD-style: 大跌放量 或 小跌但量超前日）
+            if chg_pct <= -_ZHULI_BIG_MOVE_PCT and vol >= avg_vol_50 * _ZHULI_VOL_BIG_MULT:
+                dist_days += 1
+            elif chg_pct <= -_ZHULI_SMALL_MOVE_PCT and vol > prev_vol:
+                dist_days += 1
+
+            # 缩量回调（下跌 + 缩量 + 价在均线上）
+            if chg_pct < 0 and vol <= avg_vol_50 * _ZHULI_VOL_SHRINK_MULT:
+                if closes[i] > sma_50:
+                    low_vol_pullbacks += 1
+
+        # ===== 5. 最新一日特征 =====
+        flags = []
+        latest_close = closes[-1]
+        latest_vol = volumes[-1]
+        latest_chg = (latest_close - closes[-2]) / closes[-2] * 100 if len(closes) >= 2 else 0.0
+
+        # 近 20 日高低点
+        high_20 = max(highs[-window_20:])
+        low_20 = min(lows[-window_20:])
+        vol_min_20 = min(volumes[-window_20:])
+
+        # 放量滞涨（量大但价格摆动小，接近高点）
+        if (latest_vol >= avg_vol_50 * _ZHULI_STAGNANT_VOL_MULT and
+            abs(latest_chg) < _ZHULI_STAGNANT_CHG_PCT):
+            if latest_close >= high_20 * 0.98:  # 接近 20日高点（98% 阈值）
+                flags.append("放量滞涨")
+
+        # 地量企稳（量为 20日最低，价接近 20日低点）
+        if latest_vol == vol_min_20 and latest_close <= low_20 * 1.02:
+            flags.append("地量企稳")
+
+        # ===== 6. 综合评分与标签 =====
+        score = 0.0
+        reasons = []
+
+        # CMF 贡献
+        if cmf20 > _ZHULI_CMF_ACCUM_THRESHOLD:
+            score += 30
+            reasons.append(f"CMF={cmf20:.2f}（资金净流入）")
+        elif cmf20 < _ZHULI_CMF_DIST_THRESHOLD:
+            score -= 30
+            reasons.append(f"CMF={cmf20:.2f}（资金净流出）")
+
+        # A/D 背离贡献
+        if ad_divergence == "bullish":
+            score += 20
+            reasons.append("价格平淡但A/D上行（潜在吸筹）")
+        elif ad_divergence == "bearish":
+            score -= 20
+            reasons.append("价格上涨但A/D下行（潜在派发）")
+
+        # 上涨/下跌量比贡献
+        if updown_vol_ratio > _ZHULI_UPDOWN_VOL_ACCUM:
+            score += 20
+            reasons.append(f"上涨日量比{updown_vol_ratio:.2f}（放量上涨为主）")
+        elif updown_vol_ratio < _ZHULI_UPDOWN_VOL_DIST:
+            score -= 20
+            reasons.append(f"上涨日量比{updown_vol_ratio:.2f}（放量下跌为主）")
+
+        # 模式统计贡献
+        if accum_days > 0:
+            score += (accum_days / window_20) * 20
+            reasons.append(f"{accum_days}次放量上涨")
+        if dist_days > 0:
+            score -= (dist_days / window_20) * 20
+            reasons.append(f"{dist_days}次派发日")
+        if low_vol_pullbacks > 0:
+            score += (low_vol_pullbacks / window_20) * 10
+            reasons.append(f"{low_vol_pullbacks}次缩量回调")
+
+        # 最新特征贡献
+        if "放量滞涨" in flags:
+            score -= 25
+            reasons.append("最新放量滞涨（近高位）")
+        if "地量企稳" in flags:
+            score += 15
+            reasons.append("最新地量企稳（近低位）")
+
+        # 归一化 score 到 [-100, 100]
+        score = max(-100.0, min(100.0, score))
+
+        # 标签映射
+        if score >= 40:
+            label = "吸筹"
+        elif score >= 15:
+            label = "偏吸筹"
+        elif score > -15:
+            label = "中性"
+        elif score > -40:
+            label = "偏派发"
+        else:
+            label = "派发"
+
+        return {
+            "cmf20": round(cmf20, 3),
+            "adDivergence": ad_divergence,
+            "upDownVolRatio": round(updown_vol_ratio, 2),
+            "accumDays": accum_days,
+            "distDays": dist_days,
+            "lowVolPullbacks": low_vol_pullbacks,
+            "flags": flags,
+            "score": round(score, 1),
+            "label": label,
+            "reasons": reasons,
         }
     except Exception:
         return None

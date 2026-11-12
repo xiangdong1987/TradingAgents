@@ -130,6 +130,25 @@ def build_server(store_factory=None, quote_fn=None, **settings) -> FastMCP:
             return {"ticker": t, "error": str(exc)}
 
     @mcp.tool()
+    def get_zhuli_intent(ticker: str, date: str) -> dict:
+        """Smart-money accumulation/distribution diagnostic (主力意图) for a ticker.
+        
+        Returns OHLCV-based heuristic analysis: {cmf20, adDivergence, upDownVolRatio,
+        accumDays, distDays, lowVolPullbacks, flags, score, label, reasons} or
+        {ticker, error} on failure. Date must be YYYY-MM-DD. Returns None for
+        ISINs/bonds or insufficient data (<60 bars)."""
+        t = _ticker(ticker)
+        if not _DATE_RE.match(date or ""):
+            raise ValueError("date must be YYYY-MM-DD")
+        try:
+            result = quotes.get_zhuli_intent(t, date)
+            if result is None:
+                return {"ticker": t, "error": "insufficient data or ISIN"}
+            return _plain(result)
+        except Exception as exc:
+            return {"ticker": t, "error": str(exc)}
+
+    @mcp.tool()
     def request_deep_analysis(ticker: str) -> dict:
         """Queue a deep_analysis job for a ticker (WRITE). The runner executes it
         later; poll get_ticker_analysis for the result. Returns the job id."""
