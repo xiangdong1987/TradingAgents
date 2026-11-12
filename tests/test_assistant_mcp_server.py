@@ -41,7 +41,7 @@ def test_tool_list(env):
     names = {t.name for t in asyncio.run(server.list_tools())}
     assert names == {"list_watchlist", "list_positions", "get_latest_brief", "get_brief",
                      "get_ticker_analysis", "list_suggestion_reviews", "get_quote",
-                     "request_deep_analysis"}
+                     "get_zhuli_intent", "request_deep_analysis"}
 
 
 def test_watchlist_and_positions(env):
